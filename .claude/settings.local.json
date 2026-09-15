@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e ' *)",
+      "Bash(node --check \"/private/tmp/claude-501/-Users-therechen-Downloads-Hello-World/090575db-e668-4432-8c6a-e9f8980e5fdf/scratchpad/app.js\")",
+      "Bash(python3 -)",
+      "Read(//Applications/**)",
+      "Bash(python3 -c \"import playwright\")",
+      "Bash(mkdir -p /private/tmp/claude-501/-Users-therechen-Downloads-Hello-World/090575db-e668-4432-8c6a-e9f8980e5fdf/scratchpad)",
+      "Bash(rm -f preview.html shot-landing.png shot-globe.png shot-sheet.png shot-mobile.png)",
+      "Bash(curl -sf http://localhost:8934/index.html)",
+      "Bash(chromium-cli --session helloworld)",
+      "Bash(pip3 show *)",
+      "Bash(open \"http://localhost:8934/index.html\")",
+      "Bash(python3 -c ' *)",
+      "Bash(/System/Library/Frameworks/JavaScriptCore.framework/Versions/A/Resources/jsc -e \"1+1\")",
+      "Bash(osascript -e 'tell application \"Safari\" to reload document 1')",
+      "Bash(osascript -e 'tell application \"Google Chrome\" to reload active tab of front window')"
+    ]
+  }
+}
