@@ -225,6 +225,17 @@ body.entered .topbar-right{ pointer-events:auto; }
 
 .topbar-right{ display:flex; align-items:center; gap:.7rem; }
 
+.sound-btn{
+  display:inline-flex; align-items:center; justify-content:center;
+  width:34px; height:34px; flex:0 0 auto; border-radius:50%; cursor:pointer;
+  border:1px solid var(--stroke); background:var(--glass); color:var(--muted);
+  backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+  transition:background .3s var(--ease), border-color .3s var(--ease), color .3s var(--ease);
+}
+.sound-btn:hover{ background:var(--glass-2); border-color:var(--stroke-2); color:var(--cream); }
+.sound-btn:focus-visible{ outline:2px solid var(--stroke-2); outline-offset:2px; }
+.sound-btn[aria-pressed="true"]{ color:var(--sun); border-color:color-mix(in srgb, var(--sun) 45%, var(--stroke-2)); }
+
 .menu{ position:relative; }
 .menu-btn{
   display:inline-flex; align-items:center; gap:.6rem;
@@ -283,12 +294,14 @@ body.entered .topbar-right{ pointer-events:auto; }
 }
 .cal-nav:hover{ background:var(--glass-2); border-color:var(--stroke-2); }
 
-.cal-grid{ display:grid; grid-template-columns:repeat(7, 1fr); gap:.2rem; }
+.cal-grid{ display:grid; grid-template-columns:repeat(7, minmax(0,1fr)); gap:.2rem; }
 .cal-weekdays span{
   display:block; text-align:center; padding:.25rem 0;
   font-size:.68rem; letter-spacing:.06em; text-transform:uppercase; color:var(--faint);
 }
 .cal-day{
+  appearance:none; -webkit-appearance:none;
+  width:100%; min-width:0; margin:0; box-sizing:border-box;
   aspect-ratio:1; display:flex; align-items:center; justify-content:center;
   border:0; border-radius:10px; cursor:default;
   background:transparent; color:rgba(247,242,233,.22);
@@ -344,12 +357,20 @@ body.entered .topbar-right{ pointer-events:auto; }
   width:11px; height:11px; border-radius:50%;
   background:var(--c);
   box-shadow:0 0 0 3px color-mix(in srgb, var(--c) 22%, transparent), 0 0 22px var(--c);
+  transform:scale(var(--dot-scale, 1));
   transition:transform .5s var(--spring), box-shadow .4s var(--ease);
 }
 .marker .dot::after{
   content:""; position:absolute; inset:-4px; border-radius:50%;
   border:1px solid var(--c); opacity:.7;
   animation:ping 3.4s var(--ease-out) infinite;
+}
+/* high-activity cities (15+ events) get a slow breathing glow on top of
+   their (larger) base size, so cultural hubs read as visibly "alive" */
+.marker.pulse .dot{ animation:pin-pulse 2.4s ease-in-out infinite; }
+@keyframes pin-pulse{
+  0%,100%{ box-shadow:0 0 0 3px color-mix(in srgb, var(--c) 22%, transparent), 0 0 22px var(--c); }
+  50%{ box-shadow:0 0 0 6px color-mix(in srgb, var(--c) 32%, transparent), 0 0 36px var(--c); }
 }
 .marker .label{
   font-size:.84rem; font-weight:520; letter-spacing:-.01em;
@@ -360,10 +381,10 @@ body.entered .topbar-right{ pointer-events:auto; }
   transform:translateX(-5px);
   transition:opacity .35s var(--ease), transform .45s var(--spring), border-color .35s var(--ease), background .35s var(--ease);
 }
-.marker:hover .dot, .marker:focus-visible .dot{ transform:scale(1.45); box-shadow:0 0 0 5px color-mix(in srgb, var(--c) 26%, transparent), 0 0 34px var(--c); }
+.marker:hover .dot, .marker:focus-visible .dot{ transform:scale(calc(var(--dot-scale, 1) * 1.45)); box-shadow:0 0 0 5px color-mix(in srgb, var(--c) 26%, transparent), 0 0 34px var(--c); }
 .marker:hover .label, .marker:focus-visible .label{ opacity:1; transform:translateX(0); border-color:color-mix(in srgb, var(--c) 55%, transparent); background:rgba(10,8,22,.72); }
 .marker:focus-visible{ outline:none; }
-.marker:active .dot{ transform:scale(1.15); }
+.marker:active .dot{ transform:scale(calc(var(--dot-scale, 1) * 1.15)); }
 @keyframes ping{
   0%{ transform:scale(.85); opacity:.75 }
   70%{ transform:scale(2.5); opacity:0 }
@@ -471,6 +492,38 @@ body.sheet-open #sheet{ transform:translate(-50%,-50%) scale(1); opacity:1; poin
   letter-spacing:.16em; text-transform:uppercase; color:var(--faint);
 }
 
+.date-strip{
+  display:flex; align-items:center; gap:.4rem;
+  margin:0 1.6rem .9rem;
+}
+.date-strip-track{
+  display:flex; gap:.4rem; overflow-x:auto; scroll-behavior:smooth;
+  scrollbar-width:none;
+}
+.date-strip-track::-webkit-scrollbar{ display:none; }
+.date-pill{
+  flex:0 0 auto; display:flex; flex-direction:column; align-items:center; justify-content:center;
+  min-width:50px; padding:.4rem .5rem; border-radius:12px; cursor:pointer;
+  border:1px solid var(--stroke); background:var(--glass); color:var(--muted);
+  font-family:inherit;
+  transition:background .25s var(--ease), border-color .25s var(--ease), color .25s var(--ease), transform .3s var(--spring);
+}
+.date-pill .dp-dow{ font-size:.62rem; letter-spacing:.06em; text-transform:uppercase; opacity:.8; }
+.date-pill .dp-num{ font-size:.92rem; font-weight:640; font-variant-numeric:tabular-nums; margin-top:.15rem; }
+.date-pill:hover{ background:var(--glass-2); color:var(--cream); }
+.date-pill:active{ transform:scale(.96); }
+.date-pill:focus-visible{ outline:2px solid var(--stroke-2); outline-offset:2px; }
+.date-pill.selected{ background:var(--c); border-color:var(--c); color:#161006; }
+.date-pill.selected .dp-dow{ opacity:.72; }
+.date-strip-arrow, .date-strip-cal-btn{
+  flex:0 0 auto; width:26px; height:26px; display:grid; place-items:center; border-radius:50%; cursor:pointer;
+  border:1px solid var(--stroke); background:var(--glass); color:var(--cream);
+  font-family:inherit; font-size:.9rem; line-height:1;
+  transition:background .25s var(--ease), border-color .25s var(--ease);
+}
+.date-strip-arrow:hover, .date-strip-cal-btn:hover{ background:var(--glass-2); border-color:var(--stroke-2); }
+.date-strip-arrow:focus-visible, .date-strip-cal-btn:focus-visible{ outline:2px solid var(--stroke-2); outline-offset:2px; }
+
 .chips{
   display:flex; gap:.42rem; overflow-x:auto;
   padding:0 1.6rem .9rem; scrollbar-width:none;
@@ -499,7 +552,7 @@ body.sheet-open #sheet{ transform:translate(-50%,-50%) scale(1); opacity:1; poin
 .events::-webkit-scrollbar-thumb{ background:rgba(255,255,255,.13); border-radius:99px; }
 
 .event{
-  display:grid; grid-template-columns:58px 1fr auto; align-items:center; gap:.9rem;
+  display:grid; grid-template-columns:64px 1fr auto; align-items:center; gap:.9rem;
   padding:.85rem .8rem; border-radius:var(--r-sm);
   border:1px solid transparent;
   transition:background .3s var(--ease), border-color .3s var(--ease), transform .4s var(--ease);
@@ -508,7 +561,9 @@ body.sheet-open #sheet{ transform:translate(-50%,-50%) scale(1); opacity:1; poin
 .event:hover{ background:var(--glass); border-color:var(--stroke); transform:translateX(3px); }
 @keyframes rise{ from{ opacity:0; transform:translateY(12px) } to{ opacity:1; transform:translateY(0) } }
 
-.ev-time{ font-size:.85rem; color:var(--cream); font-variant-numeric:tabular-nums; opacity:.9; }
+.ev-time{ display:flex; flex-direction:column; gap:.2rem; }
+.ev-date{ font-size:.62rem; letter-spacing:.05em; text-transform:uppercase; color:var(--faint); }
+.ev-hm{ font-size:.85rem; color:var(--cream); font-variant-numeric:tabular-nums; opacity:.9; }
 .ev-name{ font-size:.97rem; font-weight:560; letter-spacing:-.015em; }
 .ev-venue{ font-size:.79rem; color:var(--muted); margin-top:.12rem; }
 .ev-cat{
@@ -521,6 +576,22 @@ body.sheet-open #sheet{ transform:translate(-50%,-50%) scale(1); opacity:1; poin
   display:inline-block; margin-left:.45rem; font-size:.66rem; letter-spacing:.06em;
   text-transform:uppercase; color:var(--sun);
 }
+.ev-actions{ display:flex; flex-direction:column; align-items:flex-end; gap:.4rem; }
+.ev-tickets{
+  display:inline-flex; align-items:center; gap:.35rem;
+  padding:.32rem .62rem; border-radius:999px; cursor:pointer;
+  border:1px solid color-mix(in srgb, var(--cc) 45%, var(--stroke));
+  background:color-mix(in srgb, var(--cc) 16%, transparent);
+  color:var(--cream); font-family:inherit; font-size:.7rem; font-weight:600; letter-spacing:.01em;
+  text-decoration:none; white-space:nowrap;
+  transition:background .25s var(--ease), border-color .25s var(--ease), transform .3s var(--spring);
+}
+.ev-tickets:hover, .ev-tickets:focus-visible{
+  background:color-mix(in srgb, var(--cc) 32%, transparent);
+  border-color:color-mix(in srgb, var(--cc) 65%, var(--stroke));
+  transform:translateY(-1px); outline:none;
+}
+.ev-tickets:active{ transform:translateY(0) scale(.97); }
 .empty{ padding:1.4rem .8rem; color:var(--muted); font-size:.9rem; }
 
 /* ---------- 6. Responsive ---------- */
@@ -528,8 +599,8 @@ body.sheet-open #sheet{ transform:translate(-50%,-50%) scale(1); opacity:1; poin
   .marker .label{ opacity:0; transform:translateX(-8px); }
   .marker.near .label{ opacity:.85; transform:translateX(0); }
   .title-block{ top:clamp(70px,11vh,110px); }
-  .event{ grid-template-columns:52px 1fr; }
-  .ev-cat{ grid-column:2; justify-self:start; margin-top:.15rem; }
+  .event{ grid-template-columns:58px 1fr; }
+  .ev-actions{ grid-column:2; justify-self:start; flex-direction:row; align-items:center; margin-top:.4rem; }
 }
 @media (max-width:520px){
   #sheet{
@@ -584,7 +655,8 @@ body.sheet-open #sheet{ transform:translate(-50%,-50%) scale(1); opacity:1; poin
   <div class="topbar">
     <span class="brand"><span class="mark"></span> hello world</span>
     <div class="topbar-right">
-      <span class="chip-live"><span class="pulse-dot" style="width:6px;height:6px"></span> <span id="clock">--:--</span> UTC</span>
+      <span class="chip-live"><span class="pulse-dot" style="width:6px;height:6px"></span> <span id="clock">--:--</span> <span id="clockZone">SYD</span></span>
+      <button class="sound-btn" id="soundBtn" type="button" aria-pressed="false" aria-label="Toggle ambient sound"></button>
       <div class="menu" id="dateMenu">
         <button class="menu-btn" id="dateMenuBtn" aria-haspopup="true" aria-expanded="false">
           <span id="dateMenuLabel">Any day</span>
@@ -628,6 +700,17 @@ body.sheet-open #sheet{ transform:translate(-50%,-50%) scale(1); opacity:1; poin
     </button>
   </div>
   <p class="whats-on">What's on</p>
+  <div class="date-strip">
+    <button class="date-strip-arrow" id="dateStripPrev" type="button" aria-label="Earlier dates">‹</button>
+    <div class="date-strip-track" id="dateStripTrack"></div>
+    <button class="date-strip-arrow" id="dateStripNext" type="button" aria-label="Later dates">›</button>
+    <button class="date-strip-cal-btn" id="dateStripCalBtn" type="button" aria-label="Pick any date" aria-haspopup="true">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+        <rect x="1.5" y="2.5" width="11" height="10" rx="1.5" stroke="currentColor" stroke-width="1.2"/>
+        <path d="M1.5 5.5h11M4 1.2v2M10 1.2v2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+      </svg>
+    </button>
+  </div>
   <div class="chips" id="chips"></div>
   <ul class="events" id="events"></ul>
 </div>
@@ -649,73 +732,127 @@ const CAT = {
 };
 
 const CITIES = [
-  {
-    name:"Berlin", lat:52.52, lon:13.40, color:"#FF6B3D", tz:2,
-    tag:"Techno capital", meta:"32 events · Fri – Sun",
-    events:[
-      { t:"20:00", n:"Post-Kraut Quartet",      v:"Silberhalle · Kreuzberg",   c:"Live Music",  d:"Fri" },
-      { t:"23:30", n:"Nachtstrom w/ Lena Fuchs",v:"Klub Rost · Friedrichshain",c:"DJ Sets",      d:"Sat" },
-      { t:"01:00", n:"Hallway Sessions",        v:"Kraftraum · Lichtenberg",   c:"Underground",  d:"Sun", b:"Till 10am" },
-      { t:"18:00", n:"Sound & Concrete",        v:"Neu Depot · Mitte",         c:"Art & Culture",d:"Fri", b:"Free" },
-      { t:"Sat",   n:"Spree Open Air",          v:"Ostkai · Riverside",        c:"Festivals",    d:"Sat" }
-    ]
-  },
-  {
-    name:"London", lat:51.51, lon:-0.13, color:"#8B6BFF", tz:1,
-    tag:"Sound system city", meta:"41 events · Fri – Sun",
-    events:[
-      { t:"19:00", n:"Analogue Rooms",          v:"Listening bar · Soho",      c:"Art & Culture",d:"Fri" },
-      { t:"21:00", n:"Basement Strings",        v:"The Foldover · Hackney",    c:"Live Music",   d:"Sat" },
-      { t:"22:00", n:"Low End Theory",          v:"Peckham Arches",            c:"DJ Sets",      d:"Sun", b:"Sold out" },
-      { t:"23:00", n:"Warehouse 12 — UKG",      v:"Bermondsey Yard",           c:"Underground",  d:"Fri", b:"All night" },
-      { t:"Sun",   n:"Thames Field Day",        v:"Victoria Park",             c:"Festivals",    d:"Sun" }
-    ]
-  },
-  {
-    name:"Tokyo", lat:35.68, lon:139.65, color:"#FF5FA2", tz:9,
-    tag:"After hours", meta:"27 events · Fri – Sun",
-    events:[
-      { t:"18:00", n:"Teppan Sound Bath",       v:"Kiyosumi Annex",            c:"Art & Culture",d:"Fri" },
-      { t:"20:30", n:"City Pop Revival",        v:"Blue Note Sub · Minato",    c:"Live Music",   d:"Sat" },
-      { t:"23:00", n:"Shibuya After Hours",     v:"Contact Annex",             c:"DJ Sets",      d:"Sun" },
-      { t:"00:30", n:"Kōenji Noise Cellar",     v:"Sub Tokyo",                 c:"Underground",  d:"Fri", b:"Late" },
-      { t:"Sat",   n:"Sumida River Sound",      v:"Riverside Stage",           c:"Festivals",    d:"Sat" }
-    ]
-  },
-  {
-    name:"Sydney", lat:-33.87, lon:151.21, color:"#39E0C8", tz:10,
-    tag:"Golden hour", meta:"19 events · Fri – Sun",
-    events:[
-      { t:"17:00", n:"Harbour Sunset Sessions", v:"Wharf 9 · Walsh Bay",       c:"Live Music",   d:"Fri" },
-      { t:"18:30", n:"Field Recordings, Reef",  v:"MCA Annex",                 c:"Art & Culture",d:"Sat", b:"Free" },
-      { t:"22:00", n:"Marrickville Basement",   v:"The Tin · Inner West",      c:"DJ Sets",      d:"Sun" },
-      { t:"23:30", n:"Off-Grid",                v:"Location on the night",     c:"Underground",  d:"Fri" },
-      { t:"Sun",   n:"Beachside Bloom",         v:"Bondi Pavilion",            c:"Festivals",    d:"Sun" }
-    ]
-  },
-  {
-    name:"New York", lat:40.71, lon:-74.01, color:"#FFC53D", tz:-4,
-    tag:"Never closes", meta:"38 events · Fri – Sun",
-    events:[
-      { t:"19:00", n:"Sound Portraits",         v:"Lower East Side",           c:"Art & Culture",d:"Fri" },
-      { t:"23:00", n:"Bushwick Loft Sessions",  v:"The Annex · Brooklyn",      c:"DJ Sets",      d:"Sat" },
-      { t:"00:00", n:"Under the Bridge",        v:"Dumbo · Waterfront",        c:"Underground",  d:"Sun" },
-      { t:"01:00", n:"Jazz at 3AM",             v:"Village Cellar",            c:"Live Music",   d:"Fri", b:"Walk-ins" },
-      { t:"Sat",   n:"Rooftop Radio Weekender", v:"Greenpoint",                c:"Festivals",    d:"Sat" }
-    ]
-  },
-  {
-    name:"Ibiza", lat:38.98, lon:1.43, color:"#59C9FF", tz:2,
-    tag:"Season is open", meta:"23 events · Fri – Sun",
-    events:[
-      { t:"18:00", n:"Salt & Light",            v:"Dalt Vila · Old Town",      c:"Art & Culture",d:"Fri" },
-      { t:"19:00", n:"Sunset Terrace w/ Marea", v:"Cala Roja",                 c:"DJ Sets",      d:"Sat" },
-      { t:"21:00", n:"Flamenco Eléctrico",      v:"Casa Marina",               c:"Live Music",   d:"Sun" },
-      { t:"02:00", n:"Cave Sessions",           v:"Es Vedrà Cove",             c:"Underground",  d:"Fri", b:"Boat only" },
-      { t:"Fri",   n:"White Isle Opening",      v:"Playa Norte",               c:"Festivals",    d:"Fri" }
-    ]
-  }
+  { name:"Berlin",   lat:52.52,  lon:13.40,   color:"#FF6B3D", tz:2,  zoneLabel:"BER", tag:"Techno capital",     apiCity:"Berlin",   apiCountry:"DE" },
+  { name:"London",   lat:51.51,  lon:-0.13,   color:"#8B6BFF", tz:1,  zoneLabel:"LON", tag:"Sound system city",  apiCity:"London",   apiCountry:"GB" },
+  { name:"Tokyo",    lat:35.68,  lon:139.65,  color:"#FF5FA2", tz:9,  zoneLabel:"TYO", tag:"After hours",        apiCity:"Tokyo",    apiCountry:"JP" },
+  { name:"Sydney",   lat:-33.87, lon:151.21,  color:"#39E0C8", tz:10, zoneLabel:"SYD", tag:"Golden hour",        apiCity:"Sydney",   apiCountry:"AU" },
+  { name:"New York", lat:40.71,  lon:-74.01,  color:"#FFC53D", tz:-4, zoneLabel:"NYC", tag:"Never closes",       apiCity:"New York", apiCountry:"US" },
+  { name:"Ibiza",    lat:38.98,  lon:1.43,    color:"#59C9FF", tz:2,  zoneLabel:"IBZ", tag:"Season is open",     apiCity:"Ibiza",    apiCountry:"ES" }
 ];
+// each city's `events` (null = not yet fetched) is populated live from
+// Ticketmaster the first time its sheet is opened — see LIVE EVENT DATA below
+
+/* ============================================================
+   LIVE EVENT DATA — Ticketmaster Discovery API
+   ------------------------------------------------------------
+   Fetched lazily per city (once, then cached on the city object)
+   the first time that city's sheet is opened. Ticketmaster's own
+   genre/segment fields are mapped onto this app's existing
+   category set so the chips/colors stay unchanged.
+   ============================================================ */
+const TICKETMASTER_API_KEY = "GIyS7jvdyOa3qNxmywtlyS7g22Q5mc7g";
+
+function mapCategory(raw){
+  const genre = raw.classifications?.[0]?.genre?.name || "";
+  const segment = raw.classifications?.[0]?.segment?.name || "";
+  const name = raw.name || "";
+  if (/festival/i.test(name)) return "Festivals";
+  if (segment === "Arts & Theatre" || segment === "Film") return "Art & Culture";
+  if (genre === "Dance/Electronic") return "DJ Sets";
+  if (/alternative|punk|metal|industrial/i.test(genre)) return "Underground";
+  return "Live Music";
+}
+
+function normalizeEvent(raw){
+  const localDate = raw.dates?.start?.localDate || null;
+  const localTime = raw.dates?.start?.localTime;
+  let date = null, weekday = "", dateLabel = null;
+  if (localDate){
+    const [y, mo, d] = localDate.split("-").map(Number);
+    date = { y, m: mo - 1, d };
+    const dt = new Date(y, mo - 1, d);
+    weekday = dt.toLocaleDateString("en-US", { weekday:"short" });
+    dateLabel = dt.toLocaleDateString("en-US", { month:"short", day:"numeric" });
+  }
+  const status = raw.dates?.status?.code;
+  const badge = status === "cancelled" ? "Cancelled" : status === "postponed" ? "Postponed" : undefined;
+
+  return {
+    t: localTime ? localTime.slice(0, 5) : "TBA",
+    n: raw.name || "Untitled event",
+    v: raw._embedded?.venues?.[0]?.name || "Venue TBA",
+    c: mapCategory(raw),
+    d: weekday,
+    date,
+    dateLabel,
+    b: badge,
+    url: raw.url || null
+  };
+}
+
+async function fetchCityEvents(city, sizeOnly){
+  const params = new URLSearchParams({
+    apikey: TICKETMASTER_API_KEY,
+    city: city.apiCity,
+    countryCode: city.apiCountry,
+    classificationName: "music",
+    sort: "date,asc",
+    size: sizeOnly ? "1" : "40"
+  });
+  const res = await fetch(`https://app.ticketmaster.com/discovery/v2/events.json?${params}`);
+  if (!res.ok) throw new Error(`Ticketmaster request failed (${res.status})`);
+  const data = await res.json();
+  return {
+    total: data.page?.totalElements ?? 0,
+    events: (data._embedded?.events || []).map(normalizeEvent)
+  };
+}
+
+function loadCityEvents(i){
+  const city = CITIES[i];
+  if (!city._promise){
+    city._promise = fetchCityEvents(city, false)
+      .then(({ events, total }) => {
+        city.events = events;
+        city.eventCount = total;
+        updateMarkerScale(i);
+        return events;
+      })
+      .catch(err => { city._promise = null; throw err; });
+  }
+  return city._promise;
+}
+
+/* ------------------------------------------------------------
+   Pin size reflects each city's real event count — a tiered
+   (non-linear) scale so one huge market doesn't dwarf everything
+   else, plus a slow breathing pulse on the busiest hubs. Counts
+   are fetched cheaply (size=1, just for the total) for every
+   city right after Enter, well before any sheet is opened.
+   ------------------------------------------------------------ */
+function pinScaleForCount(n){
+  if (n >= 31) return 2.1;  // extra large — capped so it never overwhelms the globe
+  if (n >= 16) return 1.75; // large
+  if (n >= 6)  return 1.35; // medium
+  return 1;                 // small (1–5, or not yet known)
+}
+
+function updateMarkerScale(i){
+  const city = CITIES[i];
+  if (!city.el) return;
+  const count = city.eventCount ?? 0;
+  city.el.style.setProperty("--dot-scale", pinScaleForCount(count));
+  city.el.classList.toggle("pulse", count >= 15);
+}
+
+function loadAllEventCounts(){
+  CITIES.forEach((city, i) => {
+    if (city.eventCount != null || city._promise) return; // already known or a full fetch is already underway
+    fetchCityEvents(city, true)
+      .then(({ total }) => { city.eventCount = total; updateMarkerScale(i); })
+      .catch(() => {}); // leave the pin at its default small size on failure
+  });
+}
 
 /* Coarse, stylised coastlines (lon, lat). Deliberately low-poly —
    they read as Earth at dot resolution without shipping a geo dataset. */
@@ -835,7 +972,9 @@ function resize(){
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   cx = W / 2;
   cy = H * (W < 640 ? 0.56 : 0.55);
-  R = Math.min(W * 0.40, H * 0.355);
+  // smaller than before, leaving clear breathing room above (title) and
+  // below (city rail) the globe + visualiser at typical viewport sizes
+  R = Math.min(W * 0.225, H * 0.20);
   seedParticles();
 }
 resize();
@@ -860,7 +999,277 @@ function frame(now){
   requestAnimationFrame(frame);
 }
 
+/* ============================================================
+   RADIAL AUDIO VISUALIZER
+   ------------------------------------------------------------
+   A ring of thin bars just outside the globe, driven by a real
+   AnalyserNode wherever Web Audio is available, fed by the lounge
+   music generator below — genuine, continuously-evolving frequency
+   data rather than fake per-frame randomness. Muted by default;
+   the sound toggle only affects audibility, never the visualizer's
+   reactivity.
+   ============================================================ */
+
+const VIS_BARS = 128;
+const visLevels   = new Float32Array(VIS_BARS);        // smoothed 0..1, drawn each frame
+const visTargets  = new Float32Array(VIS_BARS);        // latest sample, pre-smoothing
+const visSmoothed = new Float32Array(VIS_BARS);        // spatially blurred copy of visLevels, for drawing
+const visCeil     = new Float32Array(VIS_BARS).fill(0.05); // per-bar running peak, for AGC normalization
+let visSimT = 0; // fallback animation clock when Web Audio is unavailable
+let visRotation = 0; // slow continuous spin applied to the bin->angle mapping
+const VIS_ROT_SPEED = (Math.PI * 2) / 24000;   // one full revolution every 24s
+const VIS_ROT_SPEED_REDUCED = (Math.PI * 2) / 140000;
+
+const visColors = (() => {
+  // mirrors the brand mark's conic-gradient: sun -> coral -> violet -> cyan -> sun
+  const stops = [[255,197,61],[255,107,61],[139,107,255],[57,224,200],[255,197,61]];
+  const out = [];
+  for (let i = 0; i < VIS_BARS; i++){
+    const t = (i / VIS_BARS) * (stops.length - 1);
+    const i0 = Math.floor(t), i1 = Math.min(stops.length - 1, i0 + 1), f = t - i0;
+    const a = stops[i0], b = stops[i1];
+    out.push([
+      Math.round(a[0] + (b[0] - a[0]) * f),
+      Math.round(a[1] + (b[1] - a[1]) * f),
+      Math.round(a[2] + (b[2] - a[2]) * f)
+    ]);
+  }
+  return out;
+})();
+
+let audioCtx = null, analyser = null, freqData = null, masterGain = null, soundOn = false;
+let musicBus = null, noiseBuffer = null;
+let musicStep = 0, musicNextTime = 0, musicTimer = null;
+
+/* ------------------------------------------------------------
+   Lounge/elevator-music generator — a laid-back ii-V-I-vi loop
+   (Dm7 - G7 - Cmaj7 - Am7) comped on a soft electric piano, with
+   a funky syncopated bass and a light bossa-flavoured kit. Fully
+   synthesized so there's no audio file to ship or stream.
+   ------------------------------------------------------------ */
+const MUSIC_BPM = 96;
+const MUSIC_STEP_DUR = 60 / MUSIC_BPM / 4;   // one 16th note
+const MUSIC_STEPS_PER_BAR = 16;
+const fifthAbove = f => f * Math.pow(2, 7 / 12);
+const MUSIC_CHORDS = [
+  { tones:[146.83, 174.61, 220.00, 261.63], root: 73.42  }, // Dm7  — D3 F3 A3 C4 / D2 root
+  { tones:[196.00, 246.94, 293.66, 349.23, 440.00], root: 98.00 }, // G9   — G3 B3 D4 F4 A4 / G2 root
+  { tones:[261.63, 329.63, 392.00, 493.88], root: 65.41  }, // Cmaj7 — C4 E4 G4 B4 / C2 root
+  { tones:[220.00, 261.63, 329.63, 392.00], root: 110.00 }  // Am7  — A3 C4 E4 G4 / A2 root
+];
+
+function playEPiano(freqs, time, dur, vel){
+  freqs.forEach(f => {
+    const o1 = audioCtx.createOscillator();
+    o1.type = "sine"; o1.frequency.setValueAtTime(f, time);
+    const o2 = audioCtx.createOscillator();
+    o2.type = "sine"; o2.frequency.setValueAtTime(f * 2.01, time); // bright bell-like partial, slightly detuned
+    const g2 = audioCtx.createGain();
+    g2.gain.value = 0.16;
+    const env = audioCtx.createGain();
+    env.gain.setValueAtTime(0, time);
+    env.gain.linearRampToValueAtTime(vel, time + 0.015);
+    env.gain.exponentialRampToValueAtTime(Math.max(0.0001, vel * 0.3), time + dur * 0.5);
+    env.gain.exponentialRampToValueAtTime(0.0001, time + dur);
+    const filt = audioCtx.createBiquadFilter();
+    filt.type = "lowpass"; filt.frequency.value = 2400; filt.Q.value = 0.3;
+    o1.connect(env);
+    o2.connect(g2).connect(env);
+    env.connect(filt).connect(musicBus);
+    o1.start(time); o2.start(time);
+    o1.stop(time + dur + 0.05); o2.stop(time + dur + 0.05);
+  });
+}
+
+function playBass(freq, time, dur, vel){
+  const osc = audioCtx.createOscillator();
+  osc.type = "triangle"; osc.frequency.setValueAtTime(freq, time);
+  const filt = audioCtx.createBiquadFilter();
+  filt.type = "lowpass"; filt.frequency.value = 950; filt.Q.value = 1.1;
+  const env = audioCtx.createGain();
+  env.gain.setValueAtTime(0, time);
+  env.gain.linearRampToValueAtTime(vel, time + 0.008);
+  env.gain.exponentialRampToValueAtTime(0.0001, time + dur);
+  osc.connect(filt).connect(env).connect(musicBus);
+  osc.start(time); osc.stop(time + dur + 0.02);
+}
+
+function playKick(time, vel){
+  const osc = audioCtx.createOscillator();
+  osc.type = "sine";
+  osc.frequency.setValueAtTime(115, time);
+  osc.frequency.exponentialRampToValueAtTime(42, time + 0.13);
+  const env = audioCtx.createGain();
+  env.gain.setValueAtTime(vel, time);
+  env.gain.exponentialRampToValueAtTime(0.0001, time + 0.18);
+  osc.connect(env).connect(musicBus);
+  osc.start(time); osc.stop(time + 0.2);
+}
+
+function playNoiseHit(time, vel, type, freq, q, decay){
+  const src = audioCtx.createBufferSource();
+  src.buffer = noiseBuffer;
+  const filt = audioCtx.createBiquadFilter();
+  filt.type = type; filt.frequency.value = freq; filt.Q.value = q;
+  const env = audioCtx.createGain();
+  env.gain.setValueAtTime(vel, time);
+  env.gain.exponentialRampToValueAtTime(0.0001, time + decay);
+  src.connect(filt).connect(env).connect(musicBus);
+  src.start(time); src.stop(time + decay + 0.02);
+}
+const playRim = (time, vel) => playNoiseHit(time, vel, "bandpass", 1900, 1.5, 0.07);
+const playHat = (time, vel) => playNoiseHit(time, vel, "highpass", 6500, 0.9, 0.035);
+
+function scheduleMusicStep(step, time){
+  const bar = Math.floor(step / MUSIC_STEPS_PER_BAR) % MUSIC_CHORDS.length;
+  const s = step % MUSIC_STEPS_PER_BAR;
+  const chord = MUSIC_CHORDS[bar];
+
+  // soft electric-piano comping — sparse, laid-back "chunk ... chk"
+  if (s === 0)  playEPiano(chord.tones, time, 1.5, 0.4);
+  if (s === 10) playEPiano(chord.tones, time, 0.5, 0.24);
+
+  // funky, syncopated bassline
+  if (s === 0)  playBass(chord.root, time, 0.5, 0.55);
+  if (s === 6)  playBass(fifthAbove(chord.root), time, 0.4, 0.4);
+  if (s === 9)  playBass(chord.root * 2, time, 0.35, 0.42);
+  if (s === 14) playBass(fifthAbove(chord.root), time, 0.35, 0.32);
+
+  // light bossa-flavoured kit
+  if (s === 0 || s === 8 || s === 10) playKick(time, s === 0 ? 0.5 : 0.34);
+  if (s === 4 || s === 12) playRim(time, 0.3);
+  playHat(time, s % 4 === 0 ? 0.12 : 0.07);
+}
+
+function musicScheduler(){
+  while (musicNextTime < audioCtx.currentTime + 0.12){
+    scheduleMusicStep(musicStep, musicNextTime);
+    musicNextTime += MUSIC_STEP_DUR;
+    musicStep++;
+  }
+}
+
+function initAudio(){
+  if (audioCtx) return;
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return;
+  try{
+    audioCtx = new AC();
+
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = VIS_BARS * 2;
+    analyser.smoothingTimeConstant = 0.6;
+    freqData = new Uint8Array(analyser.frequencyBinCount);
+
+    masterGain = audioCtx.createGain();
+    masterGain.gain.value = 0; // silent until the listener opts in via the sound toggle
+    analyser.connect(masterGain).connect(audioCtx.destination);
+
+    musicBus = audioCtx.createGain();
+    musicBus.gain.value = 0.8;
+    musicBus.connect(analyser);
+
+    const nb = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.3, audioCtx.sampleRate);
+    const nd = nb.getChannelData(0);
+    for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+    noiseBuffer = nb;
+
+    musicStep = 0;
+    musicNextTime = audioCtx.currentTime + 0.05;
+    musicTimer = setInterval(musicScheduler, 25);
+  } catch(err){
+    audioCtx = null; analyser = null; freqData = null;
+  }
+}
+
+function updateVisualizer(dt){
+  // continuously rotate the bin->angle mapping. The music's kick/bass/comp
+  // all land on the same beat every bar, so without this the loudest
+  // moment always lit up the same bins — and since bin 0 always sat at
+  // the top of the ring, that read as one fixed hot spot. Spinning the
+  // mapping slowly decouples "which angle" from "which beat", so the
+  // same recurring hit lands at a different point on the ring each time,
+  // and the energy appears to travel continuously around the circle.
+  visRotation += dt * (reduced ? VIS_ROT_SPEED_REDUCED : VIS_ROT_SPEED);
+  if (visRotation > Math.PI * 2) visRotation -= Math.PI * 2;
+
+  if (analyser){
+    analyser.getByteFrequencyData(freqData);
+    // Raw frequency-bin energy is heavily biased toward the low end (bass
+    // is naturally far louder than treble), and since bin 0 always lands
+    // at the same point on the ring, that bias reads as one permanently
+    // taller region rather than organic motion. Per-bar AGC — normalizing
+    // each bin against its own recent peak — removes that fixed bias so
+    // every bar sits on the same footing and only real activity moves it.
+    for (let i = 0; i < VIS_BARS; i++){
+      const raw = freqData[i] / 255;
+      if (raw > visCeil[i]) visCeil[i] = raw;
+      else visCeil[i] += (raw - visCeil[i]) * 0.01;
+      visCeil[i] = Math.max(visCeil[i], 0.05);
+      visTargets[i] = Math.min(1, raw / visCeil[i]);
+    }
+  } else {
+    // no Web Audio available — a smooth simulated spectrum keeps the ring alive
+    visSimT += dt * 0.001;
+    for (let i = 0; i < VIS_BARS; i++){
+      const a = Math.sin(visSimT * 1.3 + i * 0.19);
+      const b = Math.sin(visSimT * 0.7 - i * 0.11);
+      let v = 0.32 + 0.3 * a + 0.2 * b;
+      visTargets[i] = Math.max(0, Math.min(1, v));
+    }
+  }
+  const smooth = reduced ? 0.35 : 0.09;
+  for (let i = 0; i < VIS_BARS; i++) visLevels[i] += (visTargets[i] - visLevels[i]) * smooth;
+
+  // spatial blur across neighboring bars (wrapping around the full circle,
+  // including the seam at the top) so the ring eases from bar to bar
+  // instead of stepping between independent values
+  const n = VIS_BARS;
+  for (let i = 0; i < n; i++){
+    const a = visLevels[(i - 2 + n) % n];
+    const b = visLevels[(i - 1 + n) % n];
+    const c = visLevels[i];
+    const d = visLevels[(i + 1) % n];
+    const e = visLevels[(i + 2 + n) % n];
+    visSmoothed[i] = (a + b * 2 + c * 3 + d * 2 + e) / 9;
+  }
+}
+
+function drawVisualizer(r, alpha){
+  const gap = r * 0.05 + 8;
+  const inner = r + gap;
+  const maxLen = r * (reduced ? 0.09 : 0.15);
+  const minLen = 2;
+  const n = VIS_BARS;
+
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  ctx.lineCap = "round";
+  ctx.lineWidth = Math.max(0.8, r * 0.0035);
+
+  for (let i = 0; i < n; i++){
+    // a gentle gamma curve keeps quiet/idle bars sitting close to the
+    // same resting length (a clean, uniform ring) and only lets real
+    // peaks in the (already per-bar normalized) audio extend further
+    const level = Math.pow(visSmoothed[i], 1.7);
+    const len = minLen + level * maxLen;
+    const ang = (i / n) * Math.PI * 2 - Math.PI / 2 + visRotation;
+    const cosA = Math.cos(ang), sinA = Math.sin(ang);
+    const x0 = cx + cosA * inner, y0 = cy + sinA * inner;
+    const x1 = cx + cosA * (inner + len), y1 = cy + sinA * (inner + len);
+    const c = visColors[i];
+    ctx.strokeStyle = `rgba(${c[0]},${c[1]},${c[2]},${(alpha * (0.14 + level * 0.28)).toFixed(3)})`;
+    ctx.beginPath();
+    ctx.moveTo(x0, y0);
+    ctx.lineTo(x1, y1);
+    ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
 function update(dt){
+  updateVisualizer(dt);
   // entrance ease
   if (entered && view.entered < 1) view.entered = Math.min(1, view.entered + dt / 1100);
 
@@ -978,6 +1387,8 @@ function draw(){
   ctx.fillStyle = rim;
   ctx.beginPath(); ctx.arc(cx, cy, r * 1.02, 0, 6.2832); ctx.fill();
 
+  drawVisualizer(r, alpha);
+
   ctx.restore();
   ctx.globalCompositeOperation = "source-over";
 }
@@ -1016,6 +1427,7 @@ CITIES.forEach((city, i) => {
   b.addEventListener("blur", () => { view.spinTarget = reduced ? 0 : 0.00022; });
   markersEl.appendChild(b);
   city.el = b;
+  updateMarkerScale(i);
 
   const r = document.createElement("button");
   r.className = "rail-btn";
@@ -1069,39 +1481,87 @@ CITIES.forEach((city, i) => {
   cityMenuList.appendChild(li);
 });
 
-/* date menu */
+/* date menu — calendar picker */
 const dateMenuEntry = registerMenu("dateMenu", "dateMenuBtn");
 const dateMenuList  = document.getElementById("dateMenuList");
 const dateMenuLabel = document.getElementById("dateMenuLabel");
-const DAYS = [
-  { key:"All", label:"All days" },
-  { key:"Fri", label:"Friday" },
-  { key:"Sat", label:"Saturday" },
-  { key:"Sun", label:"Sunday" }
-];
-let dayFilter = "All";
-DAYS.forEach(day => {
-  const li = document.createElement("li");
-  const b = document.createElement("button");
-  b.className = "menu-item" + (day.key === "All" ? " on" : "");
-  b.setAttribute("role", "menuitemradio");
-  b.setAttribute("aria-checked", day.key === "All" ? "true" : "false");
-  b.dataset.day = day.key;
-  b.innerHTML = `${day.label}<span class="check">✓</span>`;
-  b.addEventListener("click", () => {
-    dayFilter = day.key;
-    dateMenuLabel.textContent = day.key === "All" ? "Any day" : day.label;
-    [...dateMenuList.querySelectorAll(".menu-item")].forEach(x => {
-      const on = x === b;
-      x.classList.toggle("on", on);
-      x.setAttribute("aria-checked", String(on));
-    });
-    dateMenuEntry.close();
-    if (sheetOpen) renderEvents();
-  });
-  li.appendChild(b);
-  dateMenuList.appendChild(li);
+
+const MONTH_NAMES  = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+
+let selectedDate = null;    // { y, m, d } of the clicked date, or null for "any day"
+const calView = new Date(); // month currently on screen
+calView.setDate(1);
+
+dateMenuList.innerHTML =
+  `<div class="cal-head">
+     <button class="cal-nav" id="calPrev" type="button" aria-label="Previous month">‹</button>
+     <span class="cal-title" id="calTitle"></span>
+     <button class="cal-nav" id="calNext" type="button" aria-label="Next month">›</button>
+   </div>
+   <div class="cal-grid cal-weekdays" aria-hidden="true">
+     <span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span>
+   </div>
+   <div class="cal-grid" id="calDays" role="grid"></div>
+   <button class="cal-clear" id="calClear" type="button">Any day</button>`;
+
+const calTitle = document.getElementById("calTitle");
+const calDays  = document.getElementById("calDays");
+
+function renderCalendar(){
+  const y = calView.getFullYear(), m = calView.getMonth();
+  calTitle.textContent = `${MONTH_NAMES[m]} ${y}`;
+  calDays.innerHTML = "";
+
+  const firstDow = new Date(y, m, 1).getDay();
+  const daysInMonth = new Date(y, m + 1, 0).getDate();
+
+  for (let i = 0; i < firstDow; i++){
+    const span = document.createElement("span");
+    span.className = "cal-day empty";
+    calDays.appendChild(span);
+  }
+  for (let d = 1; d <= daysInMonth; d++){
+    // real events can land on any day of the week, so every date is
+    // selectable — "has-events" here just means "a real calendar day"
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "cal-day has-events";
+    btn.textContent = d;
+    btn.setAttribute("aria-label", `${MONTH_NAMES[m]} ${d}`);
+    if (selectedDate && selectedDate.y === y && selectedDate.m === m && selectedDate.d === d){
+      btn.classList.add("selected");
+      btn.setAttribute("aria-pressed", "true");
+    }
+    btn.addEventListener("click", () => selectDate(y, m, d));
+    calDays.appendChild(btn);
+  }
+}
+
+function selectDate(y, m, d){
+  selectedDate = { y, m, d };
+  dateMenuLabel.textContent = `${MONTH_NAMES[m].slice(0, 3)} ${d}`;
+  renderCalendar();
+  dateMenuEntry.close();
+  if (sheetOpen){ renderEvents(); renderDateStrip(); }
+}
+
+document.getElementById("calPrev").addEventListener("click", () => {
+  calView.setMonth(calView.getMonth() - 1);
+  renderCalendar();
 });
+document.getElementById("calNext").addEventListener("click", () => {
+  calView.setMonth(calView.getMonth() + 1);
+  renderCalendar();
+});
+document.getElementById("calClear").addEventListener("click", () => {
+  selectedDate = null;
+  dateMenuLabel.textContent = "Any day";
+  renderCalendar();
+  dateMenuEntry.close();
+  if (sheetOpen){ renderEvents(); renderDateStrip(); }
+});
+
+renderCalendar();
 
 function placeMarkers(){
   if (view.entered <= 0.02) return;
@@ -1146,6 +1606,46 @@ const sheetMeta = document.getElementById("sheetMeta");
 const sheetTag  = document.getElementById("sheetTag");
 const closeBtn  = document.getElementById("closeBtn");
 
+const dateStripTrack  = document.getElementById("dateStripTrack");
+const dateStripPrev   = document.getElementById("dateStripPrev");
+const dateStripNext   = document.getElementById("dateStripNext");
+const dateStripCalBtn = document.getElementById("dateStripCalBtn");
+const DATE_STRIP_DAYS = 60;
+
+function renderDateStrip(){
+  dateStripTrack.innerHTML = "";
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  let selectedEl = null;
+
+  for (let i = 0; i < DATE_STRIP_DAYS; i++){
+    const d = new Date(today);
+    d.setDate(today.getDate() + i);
+    const y = d.getFullYear(), m = d.getMonth(), day = d.getDate();
+    const isToday = i === 0;
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "date-pill";
+    btn.innerHTML =
+      `<span class="dp-dow">${isToday ? "Today" : d.toLocaleDateString("en-US", { weekday:"short" })}</span>` +
+      `<span class="dp-num">${day}</span>`;
+    btn.setAttribute("aria-label", d.toLocaleDateString("en-US", { weekday:"long", month:"long", day:"numeric" }));
+    if (selectedDate && selectedDate.y === y && selectedDate.m === m && selectedDate.d === day){
+      btn.classList.add("selected");
+      btn.setAttribute("aria-pressed", "true");
+      selectedEl = btn;
+    }
+    btn.addEventListener("click", () => selectDate(y, m, day));
+    dateStripTrack.appendChild(btn);
+  }
+  if (selectedEl) selectedEl.scrollIntoView({ inline:"center", block:"nearest" });
+}
+
+dateStripPrev.addEventListener("click", () => dateStripTrack.scrollBy({ left:-160, behavior:"smooth" }));
+dateStripNext.addEventListener("click", () => dateStripTrack.scrollBy({ left:160, behavior:"smooth" }));
+dateStripCalBtn.addEventListener("click", () => dateMenuEntry.open());
+
 let sheetOpen = false, activeCity = -1, filter = "All", lastFocus = null;
 
 function openCity(i, fly){
@@ -1157,12 +1657,51 @@ function showSheet(i){
   const c = CITIES[i];
   activeCity = i; filter = "All";
   lastFocus = document.activeElement;
+  clockCity = c;
+  tick();
+
+  // default to today rather than "any day" — otherwise the list mixes
+  // events from many different upcoming dates with none of the date
+  // pills highlighted, which reads as random/wrong-day events showing up
+  if (!selectedDate){
+    const t = new Date();
+    selectedDate = { y: t.getFullYear(), m: t.getMonth(), d: t.getDate() };
+    dateMenuLabel.textContent = "Today";
+    renderCalendar();
+  }
 
   sheet.style.setProperty("--c", c.color);
   sheetCity.textContent = c.name;
-  sheetMeta.textContent = c.meta;
   sheetTag.textContent = c.tag;
+  renderDateStrip();
 
+  if (c.events){
+    sheetMeta.textContent = `${c.eventCount ?? c.events.length} events · via Ticketmaster`;
+    buildChipsAndRender(c);
+  } else {
+    sheetMeta.textContent = "Loading live listings…";
+    chipsEl.innerHTML = "";
+    eventsEl.innerHTML = `<li class="empty">Loading tonight's lineup…</li>`;
+    loadCityEvents(i).then(() => {
+      if (activeCity !== i) return; // sheet moved on to a different city already
+      sheetMeta.textContent = `${c.eventCount ?? c.events.length} events · via Ticketmaster`;
+      buildChipsAndRender(c);
+    }).catch(err => {
+      console.error("Ticketmaster fetch failed:", err);
+      if (activeCity !== i) return;
+      sheetMeta.textContent = "Couldn't load live listings";
+      eventsEl.innerHTML = `<li class="empty">Couldn't reach the events service right now. Try again shortly.</li>`;
+    });
+  }
+
+  sheetOpen = true;
+  document.body.classList.add("sheet-open");
+  CITIES.forEach((x, n) => x.rail.classList.toggle("is-active", n === i));
+  view.spinTarget = 0;
+  setTimeout(() => closeBtn.focus({ preventScroll:true }), 120);
+}
+
+function buildChipsAndRender(c){
   const cats = ["All", ...new Set(c.events.map(e => e.c))];
   chipsEl.innerHTML = "";
   cats.forEach(cat => {
@@ -1177,23 +1716,27 @@ function showSheet(i){
     });
     chipsEl.appendChild(b);
   });
-
   renderEvents();
-  sheetOpen = true;
-  document.body.classList.add("sheet-open");
-  CITIES.forEach((x, n) => x.rail.classList.toggle("is-active", n === i));
-  view.spinTarget = 0;
-  setTimeout(() => closeBtn.focus({ preventScroll:true }), 120);
+}
+
+function escapeHtml(str){
+  return String(str).replace(/[&<>"']/g, ch => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[ch]));
 }
 
 function renderEvents(){
   const c = CITIES[activeCity];
-  const list = c.events.filter(e =>
-    (filter === "All" || e.c === filter) && (dayFilter === "All" || e.d === dayFilter)
-  );
+  const events = c.events || [];
+  const list = events.filter(e => {
+    if (filter !== "All" && e.c !== filter) return false;
+    if (selectedDate){
+      if (!e.date) return false;
+      return e.date.y === selectedDate.y && e.date.m === selectedDate.m && e.date.d === selectedDate.d;
+    }
+    return true;
+  });
   eventsEl.innerHTML = "";
   if (!list.length){
-    eventsEl.innerHTML = `<li class="empty">Nothing listed here ${dayFilter === "All" ? "tonight" : "for " + dateMenuLabel.textContent}.</li>`;
+    eventsEl.innerHTML = `<li class="empty">Nothing listed here ${selectedDate ? "for " + dateMenuLabel.textContent : "right now"}.</li>`;
     return;
   }
   list.forEach((e, i) => {
@@ -1201,11 +1744,18 @@ function renderEvents(){
     li.className = "event";
     li.style.setProperty("--cc", CAT[e.c]);
     li.style.animationDelay = (i * 55) + "ms";
+    const safeUrl = e.url && /^https:\/\//i.test(e.url) ? e.url : null;
+    const ticketsHtml = safeUrl
+      ? `<a class="ev-tickets" href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener noreferrer">
+           <svg width="11" height="11" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M1.5 5.5v-2A1 1 0 0 1 2.5 2.5h9a1 1 0 0 1 1 1v2a1.4 1.4 0 0 0 0 2.8v2A1 1 0 0 1 11.5 11.5h-9a1 1 0 0 1-1-1v-2a1.4 1.4 0 0 0 0-2.8Z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/><path d="M5.5 2.5v9" stroke="currentColor" stroke-width="1.1" stroke-dasharray="1.4 1.4" stroke-linecap="round"/></svg>
+           Get tickets
+         </a>`
+      : "";
     li.innerHTML =
-      `<span class="ev-time">${e.t}</span>` +
-      `<span><span class="ev-name">${e.n}</span>${e.b ? `<span class="ev-badge">${e.b}</span>` : ""}` +
-      `<span class="ev-venue">${e.v}</span></span>` +
-      `<span class="ev-cat">${e.c}</span>`;
+      `<span class="ev-time">${e.dateLabel ? `<span class="ev-date">${escapeHtml(e.dateLabel)}</span>` : ""}<span class="ev-hm">${escapeHtml(e.t)}</span></span>` +
+      `<span><span class="ev-name">${escapeHtml(e.n)}</span>${e.b ? `<span class="ev-badge">${escapeHtml(e.b)}</span>` : ""}` +
+      `<span class="ev-venue">${escapeHtml(e.v)}</span></span>` +
+      `<span class="ev-actions"><span class="ev-cat">${escapeHtml(e.c)}</span>${ticketsHtml}</span>`;
     eventsEl.appendChild(li);
   });
 }
@@ -1216,6 +1766,8 @@ function closeSheet(){
   document.body.classList.remove("sheet-open");
   CITIES.forEach(x => x.rail.classList.remove("is-active"));
   view.spinTarget = reduced ? 0 : 0.00022;
+  clockCity = null;
+  tick();
   if (lastFocus && lastFocus.focus) lastFocus.focus({ preventScroll:true });
 }
 
@@ -1286,15 +1838,44 @@ enterBtn.addEventListener("click", () => {
   document.body.classList.add("entered");
   world.setAttribute("aria-hidden", "false");
   canvas.style.cursor = "grab";
+  initAudio();
+  loadAllEventCounts();
   setTimeout(() => { const f = markersEl.querySelector(".marker"); if (f) f.setAttribute("tabindex", "0"); }, 900);
 });
 
-/* clock */
+/* sound toggle — mute state only affects audibility; the visualizer
+   above always reacts to the analyser regardless of this setting */
+const SOUND_ON_ICON  = `<svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true"><path d="M2 5.5v4h2.4L8 12.5v-10L4.4 5.5H2Z" fill="currentColor"/><path d="M10.3 4.7a5 5 0 0 1 0 5.6M12 3a7.5 7.5 0 0 1 0 9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>`;
+const SOUND_OFF_ICON = `<svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true"><path d="M2 5.5v4h2.4L8 12.5v-10L4.4 5.5H2Z" fill="currentColor"/><path d="M10.5 5.5l3 3M13.5 5.5l-3 3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>`;
+const soundBtn = document.getElementById("soundBtn");
+soundBtn.innerHTML = SOUND_OFF_ICON;
+soundBtn.addEventListener("click", () => {
+  initAudio();
+  if (!audioCtx) return;
+  audioCtx.resume();
+  soundOn = !soundOn;
+  const now = audioCtx.currentTime;
+  masterGain.gain.cancelScheduledValues(now);
+  masterGain.gain.setTargetAtTime(soundOn ? 0.05 : 0, now, 0.25);
+  soundBtn.innerHTML = soundOn ? SOUND_ON_ICON : SOUND_OFF_ICON;
+  soundBtn.setAttribute("aria-pressed", String(soundOn));
+});
+
+/* clock — Sydney by default, switches to whichever city's sheet is open */
 const clockEl = document.getElementById("clock");
+const clockZoneEl = document.getElementById("clockZone");
+const DEFAULT_CLOCK_TZ = 10, DEFAULT_CLOCK_LABEL = "SYD"; // Sydney
+let clockCity = null; // null = show the default (Sydney) time
+
 function tick(){
-  const d = new Date();
+  const tz = clockCity ? clockCity.tz : DEFAULT_CLOCK_TZ;
+  const label = clockCity ? clockCity.zoneLabel : DEFAULT_CLOCK_LABEL;
+  const now = new Date();
+  const utcMs = now.getTime() + now.getTimezoneOffset() * 60000;
+  const local = new Date(utcMs + tz * 3600000);
   clockEl.textContent =
-    String(d.getUTCHours()).padStart(2, "0") + ":" + String(d.getUTCMinutes()).padStart(2, "0");
+    String(local.getUTCHours()).padStart(2, "0") + ":" + String(local.getUTCMinutes()).padStart(2, "0");
+  clockZoneEl.textContent = label;
 }
 tick(); setInterval(tick, 20000);
 
