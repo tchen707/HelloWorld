@@ -13,9 +13,10 @@
    1. Tokens
    2. Base + ambient background
    3. Landing state
-   4. World state (globe chrome, title, markers, city rail)
+   4. World state (globe chrome, nav, title, markers, city rail)
    5. Sheet (city modal)
-   6. Motion primitives + responsive + reduced motion
+   6. Sections: Itinerary & My World
+   7. Motion primitives + responsive + reduced motion
    ============================================================ */
 
 /* ---------- 1. Tokens ---------- */
@@ -190,24 +191,56 @@ body.entered #landing{
 }
 
 /* ---------- 4. World ---------- */
-#world{
+/* Shared crossfade system for the app's three top-level sections
+   (Discover / Itinerary / My World). Only one .hw-panel carries .active
+   at a time; the globe canvas (#stage) keeps rendering underneath all
+   three continuously, so it reads as one persistent world, not three
+   separate pages. */
+.hw-panel{
   position:fixed; inset:0; z-index:10;
   opacity:0; pointer-events:none;
-  transition:opacity .9s var(--ease) .18s;
+  transform:translateY(14px) scale(.985);
+  transition:opacity .6s var(--ease), transform .7s var(--spring);
 }
-body.entered #world{ opacity:1; }
-/* the world layer stays transparent to pointers so the globe can be dragged
-   anywhere; only genuinely interactive bits opt back in. */
-body.entered .rail{ pointer-events:auto; }
-body.entered .topbar-right{ pointer-events:auto; }
+body.entered .hw-panel.active{ opacity:1; pointer-events:auto; transform:translateY(0) scale(1); }
+/* Itinerary / My World scroll internally; #world (Discover) never needs
+   to and keeps its original, untouched overflow behaviour */
+#itinerary, #myworld{ overflow-y:auto; -webkit-overflow-scrolling:touch; }
+/* #world is the one exception — it must stay pass-through even while
+   active so empty space still drag-rotates the globe; only the city
+   rail opts back in, and only while Discover is actually the active
+   section (see JS: activeSection). */
+body.entered #world.active{ pointer-events:none; }
+body.entered[data-section="discover"] .rail{ pointer-events:auto; }
 
 .topbar{
-  position:absolute; top:0; left:0; right:0; pointer-events:none;
-  display:flex; align-items:center; justify-content:space-between;
+  position:fixed; top:0; left:0; right:0; z-index:20; pointer-events:none;
+  display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; row-gap:.6rem;
   gap:1rem; padding:clamp(16px,3vw,26px) clamp(16px,4vw,34px);
   padding-top:max(clamp(16px,3vw,26px), env(safe-area-inset-top));
+  opacity:0; transition:opacity .9s var(--ease) .18s;
 }
+body.entered .topbar{ opacity:1; }
+body.entered .topbar-left,
+body.entered .topbar-right{ pointer-events:auto; }
+
+.topbar-left{ display:flex; align-items:center; gap:clamp(.9rem,2.6vw,2.2rem); flex-wrap:wrap; }
 .brand{ display:flex; align-items:center; gap:.6rem; font-size:.86rem; letter-spacing:-.01em; color:var(--muted); }
+
+/* global section nav — "hello world   Discover   Itinerary   My World" */
+.hw-nav{ display:flex; align-items:center; gap:.3rem; }
+.hw-nav-item{
+  padding:.5rem .95rem; border-radius:999px; cursor:pointer;
+  border:1px solid transparent; background:transparent; color:var(--muted);
+  font-family:inherit; font-size:.86rem; font-weight:560; letter-spacing:-.005em;
+  transition:background .3s var(--ease), color .3s var(--ease), border-color .3s var(--ease);
+}
+.hw-nav-item:hover{ color:var(--cream); }
+.hw-nav-item:focus-visible{ outline:2px solid var(--stroke-2); outline-offset:2px; }
+.hw-nav-item.is-active{ color:var(--cream); background:var(--glass-2); border-color:var(--stroke); }
+
+/* date/city filters are Discover-specific tools — hide them elsewhere */
+body:not([data-section="discover"]) .discover-only{ display:none; }
 .brand .mark{
   width:18px; height:18px; border-radius:50%;
   background:conic-gradient(from 200deg, var(--sun), var(--coral), var(--violet), var(--cyan), var(--sun));
@@ -283,6 +316,17 @@ body.entered .topbar-right{ pointer-events:auto; }
 
 /* calendar date-picker panel */
 .menu-list.cal-panel{ width:290px; min-width:0; max-height:none; overflow:visible; padding:.85rem; }
+/* the sheet's calendar button reuses this exact panel (same renderCalendar()
+   logic, same DOM node) but relocates it here instead of #dateMenu while
+   open — #dateMenu lives inside .topbar, which is its own fixed/z-index:20
+   stacking context, so the dropdown would otherwise be trapped visually
+   behind the sheet (z-index:50) and unusable while a city is open */
+.cal-popover.menu-list{
+  position:fixed; right:auto; top:0;
+  transform:scale(.92) translateY(-6px); opacity:0; pointer-events:none;
+  z-index:60;
+}
+.cal-popover.menu-list.open{ opacity:1; transform:scale(1) translateY(0); pointer-events:auto; }
 
 .cal-head{ display:flex; align-items:center; justify-content:space-between; padding:.1rem .1rem .7rem; }
 .cal-title{ font-size:.88rem; font-weight:620; color:var(--cream); letter-spacing:-.01em; }
@@ -372,6 +416,14 @@ body.entered .topbar-right{ pointer-events:auto; }
   0%,100%{ box-shadow:0 0 0 3px color-mix(in srgb, var(--c) 22%, transparent), 0 0 22px var(--c); }
   50%{ box-shadow:0 0 0 6px color-mix(in srgb, var(--c) 32%, transparent), 0 0 36px var(--c); }
 }
+/* cities recognised from an imported itinerary get a slow orbiting ring,
+   distinct from the .pulse "busy tonight" treatment above */
+.marker.itinerary-match .dot::before{
+  content:""; position:absolute; inset:-8px; border-radius:50%;
+  border:1.5px dashed var(--sun); opacity:.85;
+  animation:itinerary-orbit 6s linear infinite;
+}
+@keyframes itinerary-orbit{ to{ transform:rotate(360deg); } }
 .marker .label{
   font-size:.84rem; font-weight:520; letter-spacing:-.01em;
   padding:.3rem .68rem; border-radius:999px; white-space:nowrap;
@@ -491,6 +543,10 @@ body.sheet-open #sheet{ transform:translate(-50%,-50%) scale(1); opacity:1; poin
   margin:1.2rem 1.6rem .7rem; font-size:.74rem;
   letter-spacing:.16em; text-transform:uppercase; color:var(--faint);
 }
+.date-strip-month{
+  margin:0 1.6rem .55rem; font-size:.7rem; font-weight:640;
+  letter-spacing:.1em; text-transform:uppercase; color:var(--muted);
+}
 
 .date-strip{
   display:flex; align-items:center; gap:.4rem;
@@ -515,6 +571,12 @@ body.sheet-open #sheet{ transform:translate(-50%,-50%) scale(1); opacity:1; poin
 .date-pill:focus-visible{ outline:2px solid var(--stroke-2); outline-offset:2px; }
 .date-pill.selected{ background:var(--c); border-color:var(--c); color:#161006; }
 .date-pill.selected .dp-dow{ opacity:.72; }
+/* a small dot marks the real current day even when a different date is
+   selected, so "today" and "selected" read as two distinct concepts */
+.date-pill.is-today:not(.selected)::after{
+  content:""; width:4px; height:4px; margin-top:.3rem; border-radius:50%;
+  background:var(--c); box-shadow:0 0 6px var(--c);
+}
 .date-strip-arrow, .date-strip-cal-btn{
   flex:0 0 auto; width:26px; height:26px; display:grid; place-items:center; border-radius:50%; cursor:pointer;
   border:1px solid var(--stroke); background:var(--glass); color:var(--cream);
@@ -565,7 +627,6 @@ body.sheet-open #sheet{ transform:translate(-50%,-50%) scale(1); opacity:1; poin
 .ev-date{ font-size:.62rem; letter-spacing:.05em; text-transform:uppercase; color:var(--faint); }
 .ev-hm{ font-size:.85rem; color:var(--cream); font-variant-numeric:tabular-nums; opacity:.9; }
 .ev-name{ font-size:.97rem; font-weight:560; letter-spacing:-.015em; }
-.ev-venue{ font-size:.79rem; color:var(--muted); margin-top:.12rem; }
 .ev-cat{
   font-size:.68rem; letter-spacing:.06em; text-transform:uppercase;
   padding:.3rem .58rem; border-radius:999px; white-space:nowrap;
@@ -580,27 +641,563 @@ body.sheet-open #sheet{ transform:translate(-50%,-50%) scale(1); opacity:1; poin
 .ev-tickets{
   display:inline-flex; align-items:center; gap:.35rem;
   padding:.32rem .62rem; border-radius:999px; cursor:pointer;
-  border:1px solid color-mix(in srgb, var(--cc) 45%, var(--stroke));
-  background:color-mix(in srgb, var(--cc) 16%, transparent);
+  border:1px solid color-mix(in srgb, var(--muted) 45%, var(--stroke));
+  background:color-mix(in srgb, var(--muted) 16%, transparent);
   color:var(--cream); font-family:inherit; font-size:.7rem; font-weight:600; letter-spacing:.01em;
   text-decoration:none; white-space:nowrap;
   transition:background .25s var(--ease), border-color .25s var(--ease), transform .3s var(--spring);
 }
 .ev-tickets:hover, .ev-tickets:focus-visible{
-  background:color-mix(in srgb, var(--cc) 32%, transparent);
-  border-color:color-mix(in srgb, var(--cc) 65%, var(--stroke));
+  background:color-mix(in srgb, var(--muted) 32%, transparent);
+  border-color:color-mix(in srgb, var(--muted) 65%, var(--stroke));
   transform:translateY(-1px); outline:none;
 }
 .ev-tickets:active{ transform:translateY(0) scale(.97); }
 .empty{ padding:1.4rem .8rem; color:var(--muted); font-size:.9rem; }
 
-/* ---------- 6. Responsive ---------- */
+/* ---------- 6. Sections: Itinerary & My World ---------- */
+.hw-page{
+  min-height:100%;
+  display:flex; flex-direction:column; align-items:center;
+  padding:clamp(104px,16vh,164px) clamp(20px,5vw,48px) clamp(48px,8vh,96px);
+}
+.hw-page-inner{ width:100%; max-width:920px; display:flex; flex-direction:column; align-items:center; }
+/* Itinerary only: a narrower, single shared boundary so the import row,
+   status card and event list all line up — .hw-page-inner centers its
+   children by their own content width unless a child explicitly claims
+   width:100%, which is why the dropzone (already 100%) looked wider than
+   the event rows below it (which weren't). Scoped to #itinerary so My
+   World's layout is untouched. */
+#itinerary .hw-page-inner{ max-width:740px; }
+
+.hw-page-head{ text-align:center; margin-bottom:clamp(28px,5vh,52px); }
+.hw-kicker{
+  display:inline-flex; align-items:center; gap:.5rem;
+  margin:0 0 .9rem; font-size:.74rem; letter-spacing:.16em; text-transform:uppercase;
+  color:var(--faint);
+}
+.hw-kicker::before{
+  content:""; width:6px; height:6px; border-radius:50%;
+  background:var(--sun); box-shadow:0 0 10px var(--sun);
+}
+.hw-h1{
+  margin:0; font-size:clamp(2.1rem,5vw,3.4rem); font-weight:600;
+  letter-spacing:-.03em; line-height:1.04; color:var(--cream);
+}
+.hw-sub{ margin:.85rem 0 0; font-size:clamp(1rem,2vw,1.14rem); color:var(--muted); }
+.hw-section-label{
+  font-size:.74rem; letter-spacing:.16em; text-transform:uppercase; color:var(--faint);
+  margin:0 0 1rem;
+}
+
+/* buttons shared by the new pages */
+.hw-btn-primary{
+  display:inline-flex; align-items:center; gap:.6rem;
+  padding:.85rem 1.5rem; border:0; border-radius:999px; cursor:pointer;
+  background:linear-gradient(180deg,#FFD469,#FFB425); color:#161006;
+  font-family:inherit; font-size:.94rem; font-weight:640; letter-spacing:-.005em;
+  box-shadow:0 12px 30px rgba(255,180,37,.22), inset 0 1px 0 rgba(255,255,255,.6);
+  transition:transform .45s var(--spring), box-shadow .4s var(--ease);
+}
+.hw-btn-primary:hover{ transform:translateY(-3px); box-shadow:0 18px 40px rgba(255,180,37,.3), inset 0 1px 0 rgba(255,255,255,.7); }
+.hw-btn-primary:active{ transform:translateY(-1px) scale(.98); }
+.hw-btn-primary:focus-visible{ outline:2px solid var(--cream); outline-offset:4px; }
+
+.hw-btn-ghost{
+  display:inline-flex; align-items:center; gap:.6rem;
+  padding:.82rem 1.4rem; border-radius:999px; cursor:pointer;
+  border:1px solid var(--stroke); background:var(--glass); color:var(--cream);
+  backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+  font-family:inherit; font-size:.9rem; font-weight:560;
+  transition:background .3s var(--ease), border-color .3s var(--ease), transform .4s var(--spring);
+}
+.hw-btn-ghost:hover{ background:var(--glass-2); border-color:var(--stroke-2); transform:translateY(-2px); }
+.hw-btn-ghost:active{ transform:translateY(0) scale(.98); }
+.hw-btn-ghost:focus-visible{ outline:2px solid var(--stroke-2); outline-offset:2px; }
+.hw-btn-ghost.is-flash, .hw-btn-primary.is-flash{ animation:btn-flash .5s var(--ease); }
+@keyframes btn-flash{ 50%{ transform:scale(.96); opacity:.7; } }
+
+/* generic glass card, matching #sheet / .menu-list's own treatment */
+.hw-card{
+  max-width:100%; box-sizing:border-box;
+  border-radius:var(--r-lg);
+  border:1px solid var(--stroke-2);
+  background:linear-gradient(165deg, rgba(28,22,52,.72), rgba(12,9,26,.78));
+  backdrop-filter:blur(22px) saturate(140%); -webkit-backdrop-filter:blur(22px) saturate(140%);
+  box-shadow:0 24px 60px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.07);
+}
+
+/* fire-and-forget confirmations (exports) that don't have a natural
+   persistent home to announce themselves in */
+.hw-toast{
+  position:fixed; left:50%; bottom:32px; z-index:60;
+  transform:translate(-50%, 14px);
+  padding:.85rem 1.4rem; border-radius:999px;
+  border:1px solid var(--stroke-2);
+  background:linear-gradient(165deg, rgba(28,22,52,.94), rgba(12,9,26,.96));
+  backdrop-filter:blur(20px) saturate(140%); -webkit-backdrop-filter:blur(20px) saturate(140%);
+  box-shadow:0 20px 50px rgba(0,0,0,.45);
+  color:var(--cream); font-size:.88rem; font-weight:560;
+  opacity:0; pointer-events:none;
+  transition:opacity .4s var(--ease), transform .5s var(--spring);
+}
+.hw-toast.is-visible{ opacity:1; transform:translate(-50%, 0); }
+
+/* ---- Itinerary ---- */
+.hw-import-row{
+  display:flex; flex-wrap:wrap; justify-content:center; gap:.9rem;
+  margin-bottom:clamp(28px,4vh,40px);
+}
+/* Itinerary only: give the row itself the full boundary width so it lines
+   up with the dropzone/event-list edges; the buttons stay centred inside it */
+#itinerary .hw-import-row{ width:100%; }
+
+.hw-dropzone{
+  width:100%; padding:clamp(28px,5vh,48px) 24px; margin-bottom:clamp(28px,4vh,44px);
+  text-align:center; cursor:pointer;
+  border-style:dashed; border-width:1.5px; border-color:var(--stroke-2);
+  transition:background .3s var(--ease), border-color .3s var(--ease), transform .3s var(--ease);
+}
+.hw-dropzone:hover, .hw-dropzone.is-dragover{
+  border-color:color-mix(in srgb, var(--sun) 55%, var(--stroke-2));
+  background:linear-gradient(165deg, rgba(255,197,61,.08), rgba(12,9,26,.78));
+}
+.hw-dropzone.is-dragover{ transform:scale(1.01); }
+/* export/re-import isn't wired up yet — same card, just an inert preview */
+.hw-dropzone--soon{ cursor:default; border-style:solid; }
+.hw-dropzone--soon:hover{ border-color:var(--stroke-2); background:none; }
+.hw-dropzone-icon{
+  width:46px; height:46px; margin:0 auto 1rem; display:grid; place-items:center;
+  border-radius:50%; border:1px solid var(--stroke); background:var(--glass); color:var(--sun);
+}
+.hw-dropzone-title{ margin:0 0 .4rem; font-size:1.02rem; font-weight:600; color:var(--cream); }
+.hw-dropzone-sub{ margin:0 auto; max-width:440px; font-size:.86rem; color:var(--muted); }
+
+/* success — a compact, unobtrusive confirmation bar rather than the big prompt */
+.hw-dropzone[data-state="success"]{
+  cursor:default; border-style:solid; border-color:var(--stroke-2); text-align:left;
+  background:linear-gradient(165deg, rgba(57,224,200,.08), rgba(12,9,26,.78));
+}
+.hw-dropzone[data-state="success"] .hw-dropzone-body{
+  display:flex; align-items:center; gap:1rem; text-align:left;
+}
+.hw-dropzone[data-state="success"] .hw-dropzone-icon{ margin:0; color:var(--cyan); flex:0 0 auto; }
+.hw-dropzone-file{
+  display:inline-flex; align-items:center; gap:.4rem; margin-top:.35rem;
+  font-size:.76rem; color:var(--faint);
+}
+.hw-dropzone-file strong{ color:var(--muted); font-weight:560; }
+.hw-dropzone-actions{ margin-left:auto; flex:0 0 auto; display:flex; gap:.5rem; }
+.hw-dropzone-replace{
+  flex:0 0 auto; padding:.55rem 1.05rem; border-radius:999px; cursor:pointer;
+  border:1px solid var(--stroke); background:var(--glass); color:var(--cream);
+  font-family:inherit; font-size:.8rem; font-weight:560;
+  transition:background .3s var(--ease), border-color .3s var(--ease);
+}
+.hw-dropzone-replace:hover{ background:var(--glass-2); border-color:var(--stroke-2); }
+.hw-dropzone-replace:focus-visible{ outline:2px solid var(--stroke-2); outline-offset:2px; }
+.hw-dropzone-remove{
+  flex:0 0 auto; padding:.55rem 1.05rem; border-radius:999px; cursor:pointer;
+  border:1px solid color-mix(in srgb, var(--coral) 40%, var(--stroke)); background:transparent; color:var(--muted);
+  font-family:inherit; font-size:.8rem; font-weight:560;
+  transition:background .3s var(--ease), border-color .3s var(--ease), color .3s var(--ease);
+}
+.hw-dropzone-remove:hover{
+  background:color-mix(in srgb, var(--coral) 14%, transparent);
+  border-color:color-mix(in srgb, var(--coral) 60%, var(--stroke-2));
+  color:var(--coral);
+}
+.hw-dropzone-remove:focus-visible{ outline:2px solid var(--stroke-2); outline-offset:2px; }
+
+/* error — same shape, tinted toward the palette's warm coral rather than a jarring red */
+.hw-dropzone[data-state="error"]{
+  border-color:color-mix(in srgb, var(--coral) 55%, var(--stroke-2));
+  background:linear-gradient(165deg, rgba(255,107,61,.1), rgba(12,9,26,.78));
+}
+.hw-dropzone[data-state="error"] .hw-dropzone-icon{ color:var(--coral); }
+.hw-dropzone-title.is-error{ color:var(--coral); }
+
+.hw-trip-toggle{
+  display:inline-flex; gap:.3rem; padding:.3rem; margin:0 auto clamp(24px,4vh,36px);
+  border-radius:999px; border:1px solid var(--stroke); background:var(--glass);
+}
+.hw-toggle-btn{
+  padding:.5rem 1rem; border:0; border-radius:999px; cursor:pointer;
+  background:transparent; color:var(--muted);
+  font-family:inherit; font-size:.82rem; font-weight:560;
+  transition:background .3s var(--ease), color .3s var(--ease);
+}
+.hw-toggle-btn.is-active{ background:var(--glass-2); color:var(--cream); }
+.hw-toggle-btn:focus-visible{ outline:2px solid var(--stroke-2); outline-offset:2px; }
+
+.hw-trip{ width:100%; padding:clamp(24px,4vw,40px); }
+.hw-trip-head h3{
+  margin:0 0 .4rem; font-size:clamp(1.4rem,3vw,1.9rem); font-weight:600;
+  letter-spacing:-.02em; color:var(--cream);
+}
+.hw-trip-head p{ margin:0 0 clamp(24px,4vh,36px); font-size:.9rem; color:var(--muted); }
+
+.hw-journey{ display:flex; align-items:flex-start; }
+.hw-stop{ display:flex; flex-direction:column; align-items:center; gap:.7rem; flex:0 0 auto; width:120px; text-align:center; }
+.hw-stop-dot{
+  width:16px; height:16px; border-radius:50%; background:var(--c);
+  box-shadow:0 0 0 4px color-mix(in srgb, var(--c) 20%, transparent), 0 0 20px var(--c);
+}
+.hw-stop-city{ font-size:1rem; font-weight:620; color:var(--cream); letter-spacing:-.01em; }
+.hw-stop-dates{ font-size:.78rem; color:var(--muted); font-variant-numeric:tabular-nums; }
+.hw-stop-nights{ font-size:.7rem; color:var(--faint); letter-spacing:.04em; text-transform:uppercase; }
+.hw-stop-notes{ font-size:.72rem; color:var(--faint); font-style:italic; max-width:120px; }
+.hw-stop-badge{
+  display:inline-flex; align-items:center; gap:.3rem;
+  padding:.18rem .5rem; border-radius:999px; margin-top:.1rem;
+  border:1px solid color-mix(in srgb, var(--c) 45%, var(--stroke));
+  background:color-mix(in srgb, var(--c) 14%, transparent);
+  font-size:.62rem; letter-spacing:.04em; text-transform:uppercase; color:var(--cream);
+}
+.hw-stop-line{
+  flex:1 1 auto; height:1px; margin-top:8px;
+  background:linear-gradient(90deg, var(--c1), var(--c2));
+}
+
+.hw-empty{ width:100%; padding:clamp(48px,8vh,72px) 24px; text-align:center; }
+.hw-empty-glyph{
+  width:64px; height:64px; margin:0 auto 1.2rem; border-radius:50%;
+  border:1px solid var(--stroke); background:var(--glass);
+  display:grid; place-items:center; color:var(--faint);
+}
+.hw-empty-title{ margin:0 0 .5rem; font-size:1.1rem; font-weight:600; color:var(--cream); }
+.hw-empty-sub{ margin:0; font-size:.88rem; color:var(--muted); }
+.hw-reset-demo{
+  margin-top:1.4rem; background:none; border:0; cursor:pointer;
+  color:var(--faint); font-family:inherit; font-size:.78rem; letter-spacing:.02em;
+  text-decoration:underline; text-underline-offset:3px;
+}
+.hw-reset-demo:hover{ color:var(--muted); }
+.hw-empty .hw-btn-primary{ margin-top:1.6rem; }
+
+/* saved-events itinerary — grouped by date, then city */
+#itineraryList{ width:100%; }
+.hw-itin-date-group{ width:100%; }
+.hw-itin-date{
+  font-size:.78rem; letter-spacing:.14em; text-transform:uppercase; color:var(--sun);
+  font-weight:640; margin:clamp(30px,4.5vh,44px) 0 1rem;
+}
+.hw-itin-date-group:first-child .hw-itin-date{ margin-top:0; }
+.hw-itin-city-group{ margin-bottom:.4rem; }
+.hw-itin-city{
+  font-size:clamp(1.15rem,2.4vw,1.4rem); font-weight:620; letter-spacing:-.015em;
+  color:var(--cream); margin:0 0 .5rem;
+}
+.hw-itin-events{ list-style:none; margin:0 0 .6rem; padding:0; display:flex; flex-direction:column; gap:.5rem; }
+/* itinerary rows only: a flat glass card, distinct from Discover's list
+   rows (which share the base .event/.ev-* classes) — scoped by ancestor
+   so Discover's event cards are untouched */
+#itineraryList .event{
+  grid-template-columns:auto 1fr auto; gap:1rem;
+  padding:.95rem 1.1rem;
+  background:var(--glass); border-color:var(--stroke);
+}
+#itineraryList .event:hover{ background:var(--glass-2); border-color:var(--stroke-2); transform:translateX(2px); }
+/* fixed width so every row's time column lines up regardless of
+   "HH:MM" vs "TBA" — each <li> is its own grid, so the "auto" track
+   only stays consistent across rows if its content has an explicit width */
+#itineraryList .ev-time{ width:48px; }
+/* category sits above the name, so children must not stretch to the
+   card's full width (that would turn the category pill into a bar) */
+.hw-itin-info{ display:flex; flex-direction:column; align-items:flex-start; gap:.22rem; min-width:0; }
+.hw-itin-venue{
+  display:flex; align-items:center; gap:.32rem;
+  font-size:.79rem; color:var(--muted);
+}
+.hw-itin-venue svg{ flex:0 0 auto; opacity:.65; }
+.hw-itin-meta{ display:flex; align-items:center; gap:.55rem; }
+/* status is a compact select so changing it writes straight back to the
+   itinerary record (same setItineraryStatus() the old cycle-button used),
+   just styled to match the glass-card aesthetic instead of native chrome.
+   --c is set per-status so one rule covers all three colours */
+.hw-itin-status-select{
+  appearance:none; -webkit-appearance:none; -moz-appearance:none;
+  font-family:inherit; font-size:.72rem; font-weight:650; letter-spacing:.01em;
+  color:var(--c, var(--cyan)); white-space:nowrap; cursor:pointer;
+  padding:.3rem 1.5rem .3rem .65rem; border-radius:999px;
+  border:1px solid color-mix(in srgb, var(--c, var(--cyan)) 35%, var(--stroke));
+  background-color:color-mix(in srgb, var(--c, var(--cyan)) 10%, transparent);
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 8 8'%3E%3Cpath d='M1 2.5l3 3 3-3' fill='none' stroke='currentColor' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat:no-repeat; background-position:right .6rem center; background-size:8px;
+  transition:background-color .25s var(--ease), border-color .25s var(--ease);
+}
+.hw-itin-status-select:hover{ border-color:color-mix(in srgb, var(--c, var(--cyan)) 55%, var(--stroke)); }
+.hw-itin-status-select:focus-visible{ outline:2px solid var(--stroke-2); outline-offset:2px; }
+.hw-itin-status-select option{ background:#1a1712; color:var(--cream); }
+.hw-itin-btns{ display:flex; align-items:center; gap:.4rem; opacity:.6; transition:opacity .25s var(--ease); }
+#itineraryList .event:hover .hw-itin-btns{ opacity:1; }
+.hw-itin-icon-btn{
+  width:30px; height:30px; display:grid; place-items:center; border-radius:50%;
+  border:1px solid var(--stroke); background:var(--glass); color:var(--cream);
+  cursor:pointer; text-decoration:none; flex:0 0 auto;
+  transition:background .25s var(--ease), border-color .25s var(--ease), color .25s var(--ease);
+}
+.hw-itin-icon-btn:hover{ background:var(--glass-2); border-color:var(--stroke-2); }
+.hw-itin-icon-btn:focus-visible{ outline:2px solid var(--stroke-2); outline-offset:2px; }
+.hw-itin-remove:hover{ color:var(--coral); border-color:color-mix(in srgb, var(--coral) 45%, var(--stroke-2)); }
+
+/* "+ Add to itinerary" on Discover event cards */
+.hw-itin-add{
+  display:inline-flex; align-items:center; gap:.35rem;
+  padding:.32rem .62rem; border-radius:999px; cursor:pointer;
+  border:1px solid color-mix(in srgb, var(--muted) 45%, var(--stroke));
+  background:color-mix(in srgb, var(--muted) 14%, transparent);
+  color:var(--cream); font-family:inherit; font-size:.7rem; font-weight:600; letter-spacing:.01em;
+  white-space:nowrap;
+  transition:background .3s var(--ease), border-color .3s var(--ease), transform .3s var(--spring), color .3s var(--ease);
+}
+.hw-itin-add:hover:not(:disabled){
+  background:color-mix(in srgb, var(--muted) 30%, transparent);
+  border-color:color-mix(in srgb, var(--muted) 65%, var(--stroke));
+  transform:translateY(-1px);
+}
+.hw-itin-add:active:not(:disabled){ transform:translateY(0) scale(.97); }
+.hw-itin-add:focus-visible{ outline:2px solid var(--stroke-2); outline-offset:2px; }
+.hw-itin-add.is-flashing{
+  background:color-mix(in srgb, var(--cyan) 24%, transparent);
+  border-color:color-mix(in srgb, var(--cyan) 55%, var(--stroke));
+}
+.hw-itin-add.is-added{
+  cursor:default; color:var(--muted);
+  background:color-mix(in srgb, var(--cyan) 12%, transparent);
+  border-color:color-mix(in srgb, var(--cyan) 35%, var(--stroke));
+}
+.hw-itin-add:disabled{ pointer-events:none; }
+
+/* ---- My World ---- */
+/* ONE parent grid container for all three columns, with the ONLY
+   horizontal-padding declaration for this layout (zeroed out on .hw-page
+   below so there is exactly one source, not two stacked paddings). */
+#myworld .hw-page{ padding-left:0; padding-right:0; }
+#myworld .hw-page-inner{
+  width:100%; max-width:1600px; margin:0 auto; box-sizing:border-box;
+  padding-left:clamp(40px,3vw,50px); padding-right:clamp(40px,3vw,50px);
+}
+.mw-columns{ display:block; width:100%; }
+.mw-globe-col{ width:100%; min-height:min(44vh, 400px); }
+#myWorldContent{ display:flex; flex-direction:column; gap:1rem; box-sizing:border-box; }
+#myWorldSide{ display:flex; flex-direction:column; gap:1rem; box-sizing:border-box; }
+@media (min-width:900px){
+  /* breakpoint is deliberately higher than the app's shared 760px
+     breakpoint (unrelated — nav/marker/journey responsive rules — left
+     untouched): with two fixed 360px columns + gaps, the grid's own hard
+     minimum width is ~756px of content, which doesn't comfortably fit
+     inside a viewport much narrower than ~900px once this container's
+     own padding is subtracted. Below 900px, .mw-columns' base
+     display:block (see above) stacks everything in one column instead —
+     safer and cleaner than a technically-non-overflowing but extremely
+     cramped 3-column grid. */
+  /* ROOT CAUSE (found by computing the grid's hard minimum width): the
+     previous centre track was minmax(500px, 1fr) — combined with two
+     280–380px side columns and gaps, that forced a non-negotiable
+     minimum grid width of roughly 1324px. minmax()'s lower bound is a
+     hard floor the grid engine will NOT shrink below, no matter what
+     min-width the ITEMS inside have — so on any window narrower than
+     ~1420px (most laptop screens), the grid was guaranteed to overflow
+     its container by the deficit. body{overflow:hidden} (pre-existing,
+     not part of My World) then silently CLIPPED that overflow instead of
+     scrolling it — which is exactly why the right card looked "cut off"
+     no matter how much padding/margin was adjusted around it: the actual
+     excess width was being hidden, not shown. Fixing the floor itself
+     (minmax(0, 1fr) — the centre column can shrink, it just won't need
+     to on any real screen) removes the overflow at its source. */
+  #myworld .hw-page-inner{
+    display:grid;
+    grid-template-columns: 360px minmax(0, 1fr) 360px;
+    column-gap:clamp(16px,2vw,32px);
+    align-items:start; justify-items:stretch;
+  }
+  #myworld .hw-page-head{ grid-column:1/-1; grid-row:1; }
+  .mw-columns{ display:contents; }
+  .mw-globe-col{ grid-column:2; grid-row:1; min-width:0; min-height:min(58vh, 560px); }
+  #myWorldContent{ grid-column:1; grid-row:1; min-width:0; width:100%; max-width:360px; }
+  #myWorldSide{ grid-column:3; grid-row:1; min-width:0; width:100%; max-width:360px; }
+}
+/* one elegant glass card holds the summary, most-explored/favourite and
+   the Replay button, with Cultural Fingerprint continuing in the same card */
+.mw-panel-card{ padding:clamp(22px,3vw,30px); }
+.mw-panel-heading{
+  margin:0 0 .7rem; font-size:.72rem; letter-spacing:.14em; text-transform:uppercase; color:var(--faint);
+}
+.mw-panel-big{ margin:0; font-size:clamp(1.7rem,3vw,2.1rem); font-weight:650; color:var(--cream); letter-spacing:-.02em; }
+/* hero stat ("22 Experiences") — a year-in-review headline number, not
+   another dashboard figure: size + spacing carries the hierarchy, no
+   box/border around it */
+.mw-hero-stat{ text-align:center; margin:0 0 1.3rem; }
+.mw-hero-num{
+  display:block; font-size:clamp(3.5rem,7vw,4rem); line-height:1; font-weight:700;
+  color:var(--cream); letter-spacing:-.03em; font-variant-numeric:tabular-nums;
+}
+.mw-hero-label{
+  display:block; margin-top:.4rem; font-size:.72rem; font-weight:620;
+  letter-spacing:.14em; text-transform:uppercase; color:var(--faint);
+}
+/* the three secondary stats sit evenly in one row, each just number-over-
+   label — no per-metric box, matching the hero stat's treatment */
+.mw-stat-row{ display:flex; text-align:center; margin-bottom:1.3rem; }
+.mw-stat-item{ flex:1 1 0; min-width:0; }
+.mw-stat-num{
+  display:block; font-size:clamp(1.9rem,4vw,2.25rem); line-height:1; font-weight:680;
+  color:var(--cream); letter-spacing:-.02em; font-variant-numeric:tabular-nums;
+}
+.mw-stat-label{
+  display:block; margin-top:.35rem; font-size:.64rem; font-weight:600;
+  letter-spacing:.1em; text-transform:uppercase; color:var(--faint);
+}
+.mw-panel-pair{ display:flex; gap:1.2rem; margin-bottom:1.2rem; }
+.mw-panel-pair > div{ flex:1 1 0; min-width:0; }
+.mw-panel-pair .mw-panel-tinylabel{ display:block; font-size:.68rem; letter-spacing:.06em; text-transform:uppercase; color:var(--faint); margin-bottom:.25rem; }
+/* slightly more prominent than before (was 1rem/620) — still clearly
+   secondary to the hero/stat-row numbers above */
+.mw-panel-pair .mw-panel-tinyvalue{ display:block; font-size:1.15rem; font-weight:660; color:var(--cream); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.mw-replay-btn{
+  display:inline-flex; align-items:center; justify-content:center; gap:.5rem; width:100%;
+  padding:.7rem 1.1rem; border-radius:999px; cursor:pointer; margin-bottom:1.3rem;
+  border:1px solid var(--stroke); background:var(--glass); color:var(--cream);
+  font-family:inherit; font-size:.86rem; font-weight:600;
+  transition:background .3s var(--ease), border-color .3s var(--ease);
+}
+.mw-replay-btn:hover{ background:var(--glass-2); border-color:var(--stroke-2); }
+.mw-panel-divider{ border:0; border-top:1px solid var(--stroke); margin:0 0 1.2rem; }
+/* the sidebar is narrower than the old full-width dashboard card, so the
+   fingerprint row needs a tighter label column to leave the bar legible */
+#myWorldContent .hw-fp-row{ gap:.7rem; }
+#myWorldContent .hw-fp-label{ flex-basis:92px; font-size:.78rem; }
+#myWorldContent .hw-fp-pct{ flex-basis:34px; }
+
+.hw-fingerprint{ width:100%; }
+.hw-fp-bars{ display:flex; flex-direction:column; gap:.85rem; }
+.hw-fp-row{ display:flex; align-items:center; gap:1rem; }
+.hw-fp-label{ flex:0 0 128px; font-size:.84rem; color:var(--cream); font-weight:540; }
+.hw-fp-track{ flex:1 1 auto; height:8px; border-radius:999px; background:var(--glass); overflow:hidden; }
+/* root cause of the invisible fill: .hw-fp-fill is a <span> (inline by
+   default) nested inside .hw-fp-track, which is itself just a flex ITEM
+   (not a flex container) — so unlike its siblings .hw-fp-label/.hw-fp-pct
+   (which get auto-"blockified" because they ARE direct flex items of
+   .hw-fp-row), this nested span stays display:inline, and width/height
+   are simply ignored on inline elements per the CSS spec. display:block
+   is the actual fix; the width itself was already being set correctly. */
+.hw-fp-fill{ display:block; height:100%; border-radius:999px; background:var(--c); box-shadow:0 0 12px var(--c); }
+.hw-fp-pct{ flex:0 0 40px; text-align:right; font-size:.8rem; color:var(--muted); font-variant-numeric:tabular-nums; }
+
+.hw-visited{ width:100%; padding:clamp(24px,4vw,36px); }
+.hw-visited-list{ display:flex; flex-wrap:wrap; gap:.6rem; margin-top:1rem; }
+.hw-visited-chip{
+  display:inline-flex; align-items:center; gap:.5rem;
+  padding:.55rem 1rem; border-radius:999px;
+  border:1px solid var(--stroke); background:var(--glass); color:var(--cream);
+  font-size:.86rem; font-weight:540;
+}
+.hw-visited-chip i{ width:7px; height:7px; border-radius:50%; background:var(--c); box-shadow:0 0 8px var(--c); font-style:normal; }
+.hw-visited-chip:hover{ background:var(--glass-2); border-color:var(--stroke-2); }
+
+/* Events by city: clicking a pill swaps the pill list for that city's own
+   chronological event history, in the same card */
+.mw-city-back{
+  display:inline-flex; align-items:center; gap:.25rem; margin-bottom:.9rem;
+  padding:0; border:0; background:none; cursor:pointer;
+  font-family:inherit; font-size:.78rem; font-weight:600; color:var(--muted);
+  transition:color .25s var(--ease);
+}
+.mw-city-back:hover{ color:var(--cream); }
+.mw-city-count{ font-size:1.4rem; margin-bottom:1.1rem; }
+.mw-city-cat-list{ display:flex; flex-direction:column; gap:.5rem; margin-bottom:1.2rem; }
+.mw-city-cat-row{ display:flex; align-items:center; gap:.55rem; font-size:.84rem; color:var(--cream); }
+.mw-city-cat-dot{ width:8px; height:8px; border-radius:50%; background:var(--c); box-shadow:0 0 8px var(--c); flex:0 0 auto; }
+.mw-city-cat-label{ flex:1 1 auto; min-width:0; }
+.mw-city-cat-pct{ color:var(--muted); font-variant-numeric:tabular-nums; }
+.mw-city-events{
+  list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:.9rem;
+  max-height:min(50vh, 440px); overflow-y:auto;
+}
+.mw-city-event{ padding-top:.9rem; border-top:1px solid var(--stroke); }
+.mw-city-event:first-child{ padding-top:0; border-top:0; }
+.mw-city-event-date{ display:block; font-size:.66rem; letter-spacing:.08em; text-transform:uppercase; color:var(--faint); font-weight:640; }
+.mw-city-event-cat{ display:block; margin-top:.3rem; font-size:.66rem; letter-spacing:.05em; text-transform:uppercase; color:var(--c); font-weight:640; }
+.mw-city-event-name{ display:block; margin-top:.15rem; font-size:.92rem; font-weight:600; color:var(--cream); }
+.mw-city-event-venue{ display:block; margin-top:.15rem; font-size:.8rem; color:var(--muted); }
+
+/* Recently Attended — sits under the city pills in the same card; compact
+   and editorial on purpose (no scroll area, card just grows), unlike the
+   scrollable per-city history above */
+.mw-recent-divider{ margin-top:1.2rem; }
+.mw-recent-list{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:.9rem; }
+.mw-recent-event{ padding-top:.9rem; border-top:1px solid var(--stroke); cursor:pointer; }
+.mw-recent-event:first-child{ padding-top:0; border-top:0; }
+.mw-recent-meta{ display:flex; align-items:center; justify-content:space-between; gap:.6rem; }
+.mw-recent-cat{ font-size:.66rem; letter-spacing:.05em; text-transform:uppercase; color:var(--c); font-weight:640; }
+.mw-recent-date{ font-size:.66rem; letter-spacing:.05em; text-transform:uppercase; color:var(--faint); font-weight:560; white-space:nowrap; }
+.mw-recent-name{ display:block; margin-top:.3rem; font-size:.94rem; font-weight:620; color:var(--cream); }
+.mw-recent-venue{ display:block; margin-top:.15rem; font-size:.8rem; color:var(--muted); }
+
+/* ---- My World: interactive globe layer ---- */
+/* city nodes reuse .marker/.dot/.label/.hit + the pulse/ping animations
+   already defined above for Discover's pins — same visual language, just
+   a separate DOM layer so My World and Discover markers never collide */
+#myWorldNodes{ position:fixed; inset:0; z-index:15; pointer-events:none; }
+.marker.mw-node .label{ font-size:.76rem; }
+
+
+/* normal document flow, not fixed/absolute — it's the last child of
+   .hw-page-head, so it naturally sits centred right under the subtitle,
+   relative to the page (the header spans the full page width), never
+   overlapping the title/subtitle above or the globe/side cards below.
+   display:none by default means it takes no space at all until Replay
+   starts; .active just switches it to flex, no space reserved either way. */
+/* a sleek media-player-style control bar, not a popup panel — one
+   horizontal row (date | flexible progress | pause | stop), vertically
+   centred via flex rather than any stacked/absolute layout */
+.mw-replay-bar{
+  display:none; flex-direction:row; align-items:center; gap:.7rem;
+  /* responsive, not a fixed/full-width bar: lands around 500–540px on a
+     typical 13–16" MacBook window (34vw @ 1440–1536px viewport width),
+     never less than 420px or more than 560px — roughly a third of the
+     browser width, well short of the full centre column */
+  width:clamp(420px, 34vw, 560px);
+  min-height:60px;
+  margin:clamp(20px,2.5vh,28px) auto 0;
+  padding:0 .9rem; border-radius:18px;
+  border:1px solid var(--stroke-2); background:rgba(12,9,26,.72);
+  backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px);
+}
+.mw-replay-bar.active{ display:flex; }
+.mw-replay-month{
+  flex:0 0 auto; font-size:.72rem; letter-spacing:.07em; text-transform:uppercase;
+  color:var(--sun); font-weight:640; white-space:nowrap;
+}
+/* the progress bar gets the largest flexible width in the row */
+.mw-replay-track{ flex:1 1 auto; min-width:0; height:4px; border-radius:999px; background:var(--glass); overflow:hidden; }
+.mw-replay-fill{ height:100%; width:0%; border-radius:999px; background:var(--sun); box-shadow:0 0 10px var(--sun); }
+.mw-replay-controls{ display:flex; align-items:center; gap:.4rem; flex:0 0 auto; }
+.mw-replay-controls button{
+  padding:.3rem .65rem; border-radius:999px; cursor:pointer; font-family:inherit; font-size:.68rem;
+  border:1px solid var(--stroke); background:var(--glass); color:var(--muted); white-space:nowrap;
+}
+.mw-replay-controls button:hover{ background:var(--glass-2); color:var(--cream); }
+
+/* ---------- 7. Responsive ---------- */
 @media (max-width:760px){
   .marker .label{ opacity:0; transform:translateX(-8px); }
   .marker.near .label{ opacity:.85; transform:translateX(0); }
   .title-block{ top:clamp(70px,11vh,110px); }
   .event{ grid-template-columns:58px 1fr; }
-  .ev-actions{ grid-column:2; justify-self:start; flex-direction:row; align-items:center; margin-top:.4rem; }
+  .ev-actions{ grid-column:2; justify-self:start; flex-direction:row; flex-wrap:wrap; align-items:center; margin-top:.4rem; }
+
+  /* nav wraps onto its own centred row under the brand + controls */
+  .hw-nav{ order:3; width:100%; justify-content:center; }
+  .hw-nav-item{ padding:.42rem .75rem; font-size:.8rem; }
+
+  .hw-journey{ flex-direction:column; align-items:flex-start; gap:0; }
+  .hw-stop{ flex-direction:row; width:100%; align-items:center; text-align:left; gap:.9rem; }
+  .hw-stop-line{ width:1px; height:28px; margin:0 0 0 7px; background:linear-gradient(180deg, var(--c1), var(--c2)); }
+
+  .hw-fp-label{ flex-basis:96px; font-size:.78rem; }
+  .mw-replay-bar{ width:90vw; }
 }
 @media (max-width:520px){
   #sheet{
@@ -624,6 +1221,8 @@ body.sheet-open #sheet{ transform:translate(-50%,-50%) scale(1); opacity:1; poin
   }
 }
 </style>
+<!-- SheetJS — reads the uploaded Excel itinerary client-side, no build step -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 <body>
 
@@ -650,30 +1249,38 @@ body.sheet-open #sheet{ transform:translate(-50%,-50%) scale(1); opacity:1; poin
   <p class="scroll-note">Music · Culture · Everywhere</p>
 </section>
 
-<!-- ============ WORLD ============ -->
-<main id="world" aria-hidden="true">
-  <div class="topbar">
+<!-- ============ TOPBAR (persistent across all sections) ============ -->
+<header class="topbar" id="topbar">
+  <div class="topbar-left">
     <span class="brand"><span class="mark"></span> hello world</span>
-    <div class="topbar-right">
-      <span class="chip-live"><span class="pulse-dot" style="width:6px;height:6px"></span> <span id="clock">--:--</span> <span id="clockZone">SYD</span></span>
-      <button class="sound-btn" id="soundBtn" type="button" aria-pressed="false" aria-label="Toggle ambient sound"></button>
-      <div class="menu" id="dateMenu">
-        <button class="menu-btn" id="dateMenuBtn" aria-haspopup="true" aria-expanded="false">
-          <span id="dateMenuLabel">Any day</span>
-          <svg class="chev" width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true"><path d="M2 3.5 5 6.5 8 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </button>
-        <div class="menu-list cal-panel" id="dateMenuList" role="dialog" aria-label="Choose a date"></div>
-      </div>
-      <div class="menu" id="cityMenu">
-        <button class="menu-btn" id="cityMenuBtn" aria-haspopup="true" aria-expanded="false">
-          Cities
-          <svg class="chev" width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true"><path d="M2 3.5 5 6.5 8 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </button>
-        <ul class="menu-list" id="cityMenuList" role="menu" aria-label="Cities"></ul>
-      </div>
+    <nav class="hw-nav" id="hwNav" aria-label="Sections">
+      <button class="hw-nav-item is-active" type="button" data-section="discover" aria-current="page">Discover</button>
+      <button class="hw-nav-item" type="button" data-section="itinerary">Itinerary</button>
+      <button class="hw-nav-item" type="button" data-section="myworld">My World</button>
+    </nav>
+  </div>
+  <div class="topbar-right">
+    <span class="chip-live"><span class="pulse-dot" style="width:6px;height:6px"></span> <span id="clock">--:--</span> <span id="clockZone">SYD</span></span>
+    <button class="sound-btn" id="soundBtn" type="button" aria-pressed="false" aria-label="Toggle ambient sound"></button>
+    <div class="menu discover-only" id="dateMenu">
+      <button class="menu-btn" id="dateMenuBtn" aria-haspopup="true" aria-expanded="false">
+        <span id="dateMenuLabel">Any day</span>
+        <svg class="chev" width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true"><path d="M2 3.5 5 6.5 8 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <div class="menu-list cal-panel" id="dateMenuList" role="dialog" aria-label="Choose a date"></div>
+    </div>
+    <div class="menu discover-only" id="cityMenu">
+      <button class="menu-btn" id="cityMenuBtn" aria-haspopup="true" aria-expanded="false">
+        Cities
+        <svg class="chev" width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true"><path d="M2 3.5 5 6.5 8 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <ul class="menu-list" id="cityMenuList" role="menu" aria-label="Cities"></ul>
     </div>
   </div>
+</header>
 
+<!-- ============ WORLD (Discover) ============ -->
+<main id="world" class="hw-panel active" data-section="discover" aria-hidden="true">
   <div class="title-block">
     <h2 class="world-title">Hello World</h2>
     <p class="world-sub">Pick a city</p>
@@ -688,7 +1295,98 @@ body.sheet-open #sheet{ transform:translate(-50%,-50%) scale(1); opacity:1; poin
   </div>
 </main>
 
+<!-- ============ ITINERARY ============ -->
+<section id="itinerary" class="hw-panel" data-section="itinerary" aria-hidden="true">
+  <div class="hw-page">
+    <div class="hw-page-inner">
+      <div class="hw-page-head">
+        <p class="hw-kicker">Itinerary</p>
+        <h2 class="hw-h1">Plan your experiences</h2>
+        <p class="hw-sub">Where are you going next?</p>
+      </div>
+
+      <div class="hw-import-row">
+        <button class="hw-btn-primary" id="importBtn" type="button">
+          Import itinerary
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M7 1.5v7M7 8.5 4 5.5M7 8.5l3-3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 10v1.5A1.5 1.5 0 0 0 3.5 13h7A1.5 1.5 0 0 0 12 11.5V10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button class="hw-btn-ghost" id="exportBtn" type="button">
+          Share itinerary
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M7 8.5v-7M7 1.5 4 4.5M7 1.5l3 3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 10v1.5A1.5 1.5 0 0 0 3.5 13h7A1.5 1.5 0 0 0 12 11.5V10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <input type="file" id="importFile" accept=".xlsx,.xls" hidden />
+      </div>
+
+      <div class="hw-card hw-dropzone" id="dropzone" data-state="idle" tabindex="0" role="button" aria-label="Drag and drop an Excel itinerary to import">
+        <div class="hw-dropzone-body" id="dropzoneBody">
+          <div class="hw-dropzone-icon">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M9 2v9M9 2 5 6M9 2l4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M2.5 12v2A1.5 1.5 0 0 0 4 15.5h10A1.5 1.5 0 0 0 15.5 14v-2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+          <p class="hw-dropzone-title">Drag &amp; drop your itinerary</p>
+          <p class="hw-dropzone-sub">Drop in an Excel file (.xlsx or .xls) and Hello World will populate your itinerary automatically.</p>
+        </div>
+      </div>
+
+      <!-- fully rendered by renderItinerary(): either the empty state or
+           events grouped by date, then city — see the Itinerary JS below -->
+      <div id="itineraryList"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ MY WORLD ============ -->
+<section id="myworld" class="hw-panel" data-section="myworld" aria-hidden="true">
+  <div class="hw-page">
+    <div class="hw-page-inner">
+      <div class="hw-page-head">
+        <p class="hw-kicker">My World</p>
+        <h2 class="hw-h1">Hello, <em>my</em> world</h2>
+        <p class="hw-sub">A living map of every one of your experiences around the world.</p>
+        <!-- lives inside the header block (not body-level/fixed) so it
+             flows normally right under the subtitle, centred on the page —
+             not the globe column or side cards — and never overlaps
+             anything below it. Hidden (display:none) until Replay starts. -->
+        <div class="mw-replay-bar" id="myWorldReplayBar">
+          <span class="mw-replay-month" id="myWorldReplayMonth">—</span>
+          <span class="mw-replay-track"><span class="mw-replay-fill" id="myWorldReplayFill"></span></span>
+          <span class="mw-replay-controls">
+            <button type="button" id="myWorldReplayPause">Pause</button>
+            <button type="button" id="myWorldReplayStop">Stop</button>
+          </span>
+        </div>
+      </div>
+
+      <!-- 3-column desktop composition (falls back to a single stacked
+           column on mobile — see the max-width:760px override in CSS).
+           DOM order is centre-first so mobile naturally stacks
+           globe-space -> summary -> events/export; desktop repositions
+           each into its own grid column regardless of source order. -->
+      <div class="mw-columns">
+        <div class="mw-globe-col" aria-hidden="true"></div>
+
+        <!-- left: rendered by renderMyWorld()/renderMyWorldDashboard() —
+             either the empty state or the summary + Cultural Fingerprint card -->
+        <div id="myWorldContent"></div>
+
+        <div id="myWorldSide">
+          <!-- right: populated by renderMyWorldDashboard() with the
+               "Events by city" card when there's Attended data -->
+          <div id="myWorldCityCard"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ MY WORLD: interactive globe layer ============ -->
+<!-- body-level (not nested in the #myworld panel) so it aligns pixel-for-
+     pixel with the canvas globe (#stage) regardless of #myworld's own
+     scroll/enter-transition — see placeMyWorldNodes() -->
+<div id="myWorldNodes" aria-hidden="true"></div>
+
 <!-- ============ SHEET ============ -->
+<div class="hw-toast" id="hwToast" role="status" aria-live="polite"></div>
+
 <div id="scrim"></div>
 <div id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetCity">
   <div class="sheet-head">
@@ -700,6 +1398,7 @@ body.sheet-open #sheet{ transform:translate(-50%,-50%) scale(1); opacity:1; poin
     </button>
   </div>
   <p class="whats-on">What's on</p>
+  <p class="date-strip-month" id="dateStripMonth"></p>
   <div class="date-strip">
     <button class="date-strip-arrow" id="dateStripPrev" type="button" aria-label="Earlier dates">‹</button>
     <div class="date-strip-track" id="dateStripTrack"></div>
@@ -790,21 +1489,48 @@ function normalizeEvent(raw){
   };
 }
 
-async function fetchCityEvents(city, sizeOnly){
+async function fetchTicketmasterPage(city, page, size){
   const params = new URLSearchParams({
     apikey: TICKETMASTER_API_KEY,
     city: city.apiCity,
     countryCode: city.apiCountry,
     classificationName: "music",
     sort: "date,asc",
-    size: sizeOnly ? "1" : "40"
+    size: String(size),
+    page: String(page)
   });
   const res = await fetch(`https://app.ticketmaster.com/discovery/v2/events.json?${params}`);
   if (!res.ok) throw new Error(`Ticketmaster request failed (${res.status})`);
-  const data = await res.json();
+  return res.json();
+}
+
+async function fetchCityEvents(city, sizeOnly){
+  if (sizeOnly){
+    // pin-count check only needs page.totalElements — one cheap request
+    const data = await fetchTicketmasterPage(city, 0, 1);
+    return { total: data.page?.totalElements ?? 0, events: [] };
+  }
+
+  // Ticketmaster caps every page at 200 results, and some cities carry
+  // thousands of listings (London, New York) — a single page would only
+  // ever surface the soonest 200 events, silently hiding everything past
+  // that. Fetch page 0 to learn the real page count, then fetch the rest
+  // in parallel (verified against the live API: pages are contiguous, no
+  // overlap or gaps) so Discover reflects the API's FULL catalogue.
+  const MAX_PAGES = 20; // ~4,000 events — a safety bound, not a city we've seen come close to
+  const first = await fetchTicketmasterPage(city, 0, 200);
+  const total = first.page?.totalElements ?? 0;
+  const totalPages = Math.min(first.page?.totalPages ?? 1, MAX_PAGES);
+  const pages = [first];
+  if (totalPages > 1){
+    const rest = await Promise.all(
+      Array.from({ length: totalPages - 1 }, (_, i) => fetchTicketmasterPage(city, i + 1, 200))
+    );
+    pages.push(...rest);
+  }
   return {
-    total: data.page?.totalElements ?? 0,
-    events: (data._embedded?.events || []).map(normalizeEvent)
+    total,
+    events: pages.flatMap(data => (data._embedded?.events || []).map(normalizeEvent))
   };
 }
 
@@ -899,6 +1625,9 @@ const view = {
   vRot: 0, vTilt: 0,
   entered: 0,       // 0 → 1 entrance ease
   dim: 1,           // dims when the sheet is open
+  sizeMult: 1,      // globe grows a little larger/more prominent on My World
+  cxOffset: 0,      // re-centres the globe within My World's middle column (desktop)
+  cyOffset: 0,      // nudges the globe down so it sits below the My World header, not behind it
   tween: null
 };
 
@@ -995,6 +1724,7 @@ function frame(now){
     update(dt);
     draw();
     placeMarkers();
+    placeMyWorldNodes();
   }
   requestAnimationFrame(frame);
 }
@@ -1235,7 +1965,7 @@ function updateVisualizer(dt){
   }
 }
 
-function drawVisualizer(r, alpha){
+function drawVisualizer(r, alpha, cx, cy){
   const gap = r * 0.05 + 8;
   const inner = r + gap;
   const maxLen = r * (reduced ? 0.09 : 0.15);
@@ -1294,7 +2024,41 @@ function update(dt){
     if (!reduced) view.rot += view.spin * dt;
   }
   view.tilt = Math.max(-0.62, Math.min(0.62, view.tilt));
-  view.dim += (sheetOpen ? 0.42 - view.dim : 1 - view.dim) * 0.09;
+  // the globe recedes a little on Itinerary (content-focused) and stays
+  // fully present on Discover/My World (both are globe-centric)
+  const sectionDim = sheetOpen ? 0.42 : SECTION_DIM[activeSection] ?? 1;
+  view.dim += (sectionDim - view.dim) * 0.09;
+  // My World is the globe's hero moment — grow it a little; SECTION_SIZE is
+  // declared further down with the other section constants (fine: this
+  // function only runs once the whole script, including that const, has
+  // already executed — same pattern already used above for SECTION_DIM)
+  const sectionSize = sheetOpen ? 1 : SECTION_SIZE[activeSection] ?? 1;
+  view.sizeMult += (sectionSize - view.sizeMult) * 0.07;
+  // My World's 3-column grid (28% left / 47% globe / 25% right, see
+  // .mw-columns in CSS) only applies above the same width it switches to a
+  // grid at — below that everything stacks and the globe stays centred.
+  // Re-centre the globe within the middle column rather than the full
+  // viewport: column starts at 28%, so its own centre sits at
+  // 28 + 47/2 = 51.5% of the viewport, a small rightward nudge from 50%.
+  const isMyWorldDesktop = !sheetOpen && activeSection === "myworld" && W > 760;
+  const cxTarget = isMyWorldDesktop ? W * ((28 + 47 / 2) - 50) / 100 : 0;
+  view.cxOffset += (cxTarget - view.cxOffset) * 0.07;
+  // and push it down a little so it sits clearly below the header instead
+  // of level with/behind it
+  const cyTarget = isMyWorldDesktop ? H * 0.07 : 0;
+  view.cyOffset += (cyTarget - view.cyOffset) * 0.07;
+
+  // Replay My World: advance the ~12s timeline and reveal the next event
+  // whenever its slot comes up (mwReplay is declared further down with the
+  // rest of the My World code — same forward-reference pattern as above)
+  if (mwReplay && !mwReplay.paused){
+    mwReplay.elapsed += dt;
+    const progress = Math.min(1, mwReplay.elapsed / mwReplay.duration);
+    const targetIdx = Math.min(mwReplay.events.length - 1, Math.floor(progress * mwReplay.events.length));
+    if (targetIdx > mwReplay.idx) applyMyWorldReplayStep(targetIdx);
+    mwReplayFill.style.width = (progress * 100).toFixed(1) + "%";
+    if (progress >= 1) stopMyWorldReplay();
+  }
 }
 
 function draw(){
@@ -1317,29 +2081,35 @@ function draw(){
 
   const t = view.entered;
   const ease = 1 - Math.pow(1 - t, 3);
-  const r = R * (0.84 + 0.16 * ease);
+  const r = R * view.sizeMult * (0.84 + 0.16 * ease);
   const alpha = ease * view.dim;
 
   ctx.save();
   ctx.globalAlpha = alpha;
 
+  // shifted within My World's middle grid column (desktop) so the globe
+  // sits below the header and centred in its own column, not the full
+  // viewport — see view.cxOffset/cyOffset in update()
+  const dcx = cx + view.cxOffset;
+  const dcy = cy + view.cyOffset;
+
   /* atmosphere */
   ctx.globalCompositeOperation = "lighter";
-  const glow = ctx.createRadialGradient(cx, cy, r * 0.86, cx, cy, r * 1.42);
+  const glow = ctx.createRadialGradient(dcx, dcy, r * 0.86, dcx, dcy, r * 1.42);
   glow.addColorStop(0, "rgba(120,96,255,.30)");
   glow.addColorStop(0.45, "rgba(88,120,255,.11)");
   glow.addColorStop(1, "rgba(88,120,255,0)");
   ctx.fillStyle = glow;
-  ctx.beginPath(); ctx.arc(cx, cy, r * 1.42, 0, 6.2832); ctx.fill();
+  ctx.beginPath(); ctx.arc(dcx, dcy, r * 1.42, 0, 6.2832); ctx.fill();
   ctx.globalCompositeOperation = "source-over";
 
   /* ocean body */
-  const sea = ctx.createRadialGradient(cx - r * 0.34, cy - r * 0.36, r * 0.08, cx, cy, r);
+  const sea = ctx.createRadialGradient(dcx - r * 0.34, dcy - r * 0.36, r * 0.08, dcx, dcy, r);
   sea.addColorStop(0, "#221C4A");
   sea.addColorStop(0.55, "#141033");
   sea.addColorStop(1, "#080615");
   ctx.fillStyle = sea;
-  ctx.beginPath(); ctx.arc(cx, cy, r, 0, 6.2832); ctx.fill();
+  ctx.beginPath(); ctx.arc(dcx, dcy, r, 0, 6.2832); ctx.fill();
 
   /* land */
   const cr = Math.cos(view.rot), sr = Math.sin(view.rot);
@@ -1363,8 +2133,8 @@ function draw(){
     if (tier > TIERS - 1) tier = TIERS - 1;
 
     const n = tierN[tier]++;
-    tierX[tier][n] = cx + x1 * r;
-    tierY[tier][n] = cy - y2 * r;
+    tierX[tier][n] = dcx + x1 * r;
+    tierY[tier][n] = dcy - y2 * r;
     tierS[tier][n] = 0.9 + 1.25 * z2;
   }
 
@@ -1378,16 +2148,17 @@ function draw(){
   /* rim light */
   ctx.strokeStyle = "rgba(160,150,255,.22)";
   ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.arc(cx, cy, r, 0, 6.2832); ctx.stroke();
+  ctx.beginPath(); ctx.arc(dcx, dcy, r, 0, 6.2832); ctx.stroke();
 
   ctx.globalCompositeOperation = "lighter";
-  const rim = ctx.createRadialGradient(cx, cy, r * 0.92, cx, cy, r * 1.02);
+  const rim = ctx.createRadialGradient(dcx, dcy, r * 0.92, dcx, dcy, r * 1.02);
   rim.addColorStop(0, "rgba(90,200,255,0)");
   rim.addColorStop(1, "rgba(120,180,255,.20)");
   ctx.fillStyle = rim;
-  ctx.beginPath(); ctx.arc(cx, cy, r * 1.02, 0, 6.2832); ctx.fill();
+  ctx.beginPath(); ctx.arc(dcx, dcy, r * 1.02, 0, 6.2832); ctx.fill();
 
-  drawVisualizer(r, alpha);
+  drawVisualizer(r, alpha, dcx, dcy);
+  drawMyWorldGlobeLayer(alpha);
 
   ctx.restore();
   ctx.globalCompositeOperation = "source-over";
@@ -1403,8 +2174,97 @@ function project(lat, lon){
   const z1 = -vx * sr + vz * cr;
   const y2 = vy * cp - z1 * sp;
   const z2 = vy * sp + z1 * cp;
-  const rr = R * (0.84 + 0.16 * (1 - Math.pow(1 - view.entered, 3)));
-  return { x: cx + x1 * rr, y: cy - y2 * rr, z: z2 };
+  const rr = R * view.sizeMult * (0.84 + 0.16 * (1 - Math.pow(1 - view.entered, 3)));
+  return { x: cx + view.cxOffset + x1 * rr, y: cy + view.cyOffset - y2 * rr, z: z2 };
+}
+
+/* same rotation/projection math as project(), but for an arbitrary unit
+   vector on the sphere rather than a lat/lon pair — used by the My World
+   globe layer to draw arcs between cities (points along a slerp curve
+   aren't expressible as a single lat/lon) */
+function projectVec3(v, liftMult){
+  const cr = Math.cos(view.rot), sr = Math.sin(view.rot);
+  const cp = Math.cos(view.tilt), sp = Math.sin(view.tilt);
+  const x1 = v[0] * cr + v[2] * sr;
+  const z1 = -v[0] * sr + v[2] * cr;
+  const y2 = v[1] * cp - z1 * sp;
+  const z2 = v[1] * sp + z1 * cp;
+  const rr = R * view.sizeMult * (0.84 + 0.16 * (1 - Math.pow(1 - view.entered, 3))) * liftMult;
+  return { x: cx + view.cxOffset + x1 * rr, y: cy + view.cyOffset - y2 * rr, z: z2 };
+}
+function latLonToVec3(lat, lon){
+  const la = lat * RAD, lo = lon * RAD;
+  return [Math.cos(la) * Math.sin(lo), Math.sin(la), Math.cos(la) * Math.cos(lo)];
+}
+function slerpVec3(a, b, t){
+  const dot = Math.max(-1, Math.min(1, a[0]*b[0] + a[1]*b[1] + a[2]*b[2]));
+  const theta = Math.acos(dot) * t;
+  let rx = b[0] - a[0]*dot, ry = b[1] - a[1]*dot, rz = b[2] - a[2]*dot;
+  const len = Math.hypot(rx, ry, rz) || 1;
+  rx /= len; ry /= len; rz /= len;
+  const ct = Math.cos(theta), st = Math.sin(theta);
+  return [a[0]*ct + rx*st, a[1]*ct + ry*st, a[2]*ct + rz*st];
+}
+
+/* My World: glowing arcs + one travelling particle per arc, connecting
+   chronologically-visited cities on the same canvas/rotation as the
+   globe. myWorldGeo/SECTION_SIZE are declared later in the script (My
+   World section) — safe, since this only runs once the whole script has
+   executed, same forward-reference pattern used elsewhere in draw()/update(). */
+let mwArcParticles = null;
+function drawMyWorldGlobeLayer(alpha){
+  const mwFade = Math.max(0, Math.min(1, (view.sizeMult - 1) / (SECTION_SIZE.myworld - 1)));
+  if (mwFade <= 0.01 || !myWorldGeo.order) return;
+  const order = myWorldGeo.order.filter(city => {
+    const n = myWorldGeo.nodes.find(x => x.city === city);
+    return n && n.geo;
+  });
+  if (order.length < 2) return;
+
+  const vecs = order.map(city => {
+    const n = myWorldGeo.nodes.find(x => x.city === city);
+    return latLonToVec3(n.geo.lat, n.geo.lon);
+  });
+  if (!mwArcParticles || mwArcParticles.length !== vecs.length - 1){
+    mwArcParticles = Array.from({ length: vecs.length - 1 }, (_, i) => ({ t: i / Math.max(1, vecs.length - 1) }));
+  }
+
+  const STEPS = 28, LIFT = 0.22;
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  for (let i = 0; i < vecs.length - 1; i++){
+    const a = vecs[i], b = vecs[i + 1];
+    const mid = projectVec3(slerpVec3(a, b, 0.5), 1 + LIFT);
+    const midFade = Math.max(0, Math.min(1, mid.z + 0.3));
+    if (midFade > 0.02){
+      ctx.beginPath();
+      let started = false;
+      for (let s = 0; s <= STEPS; s++){
+        const t = s / STEPS;
+        const v = slerpVec3(a, b, t);
+        const lift = 1 + LIFT * Math.sin(Math.PI * t);
+        const p = projectVec3(v, lift);
+        if (p.z < -0.08){ started = false; continue; } // behind the globe
+        if (!started){ ctx.moveTo(p.x, p.y); started = true; } else ctx.lineTo(p.x, p.y);
+      }
+      ctx.strokeStyle = `rgba(255,197,61,${(0.35 * alpha * mwFade * midFade).toFixed(3)})`;
+      ctx.lineWidth = 1.4;
+      ctx.stroke();
+    }
+
+    // one travelling particle per arc, looping continuously
+    const particle = mwArcParticles[i];
+    if (!reduced) particle.t = (particle.t + 0.0022) % 1;
+    const pv = slerpVec3(a, b, particle.t);
+    const pLift = 1 + LIFT * Math.sin(Math.PI * particle.t);
+    const pp = projectVec3(pv, pLift);
+    const pFade = Math.max(0, Math.min(1, pp.z + 0.3));
+    if (pFade > 0.02){
+      ctx.fillStyle = `rgba(255,229,153,${(0.85 * alpha * mwFade * pFade).toFixed(3)})`;
+      ctx.beginPath(); ctx.arc(pp.x, pp.y, 2.2, 0, 6.2832); ctx.fill();
+    }
+  }
+  ctx.restore();
 }
 
 /* ============================================================
@@ -1485,6 +2345,17 @@ CITIES.forEach((city, i) => {
 const dateMenuEntry = registerMenu("dateMenu", "dateMenuBtn");
 const dateMenuList  = document.getElementById("dateMenuList");
 const dateMenuLabel = document.getElementById("dateMenuLabel");
+const dateMenu       = document.getElementById("dateMenu");
+// the sheet's calendar button can relocate dateMenuList into a fixed-position
+// popover (see closeDateStripCalendar/openDateStripCalendar below) so it
+// isn't trapped behind the sheet's stacking context — if the topbar's own
+// date filter is opened next, make sure the panel is back in its normal
+// home first, otherwise it would still be floating wherever it last was
+const dateMenuEntryOpen = dateMenuEntry.open.bind(dateMenuEntry);
+dateMenuEntry.open = function(){
+  closeDateStripCalendar();
+  dateMenuEntryOpen();
+};
 
 const MONTH_NAMES  = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 
@@ -1542,6 +2413,7 @@ function selectDate(y, m, d){
   dateMenuLabel.textContent = `${MONTH_NAMES[m].slice(0, 3)} ${d}`;
   renderCalendar();
   dateMenuEntry.close();
+  closeDateStripCalendar();
   if (sheetOpen){ renderEvents(); renderDateStrip(); }
 }
 
@@ -1558,6 +2430,7 @@ document.getElementById("calClear").addEventListener("click", () => {
   dateMenuLabel.textContent = "Any day";
   renderCalendar();
   dateMenuEntry.close();
+  closeDateStripCalendar();
   if (sheetOpen){ renderEvents(); renderDateStrip(); }
 });
 
@@ -1573,7 +2446,7 @@ function placeMarkers(){
     const el = c.el;
     el.style.transform = `translate3d(${p.x.toFixed(1)}px, ${p.y.toFixed(1)}px, 0) translate(-5.5px, -5.5px) scale(${s.toFixed(3)})`;
     el.style.opacity = (fade * view.entered * view.dim).toFixed(3);
-    el.style.pointerEvents = (front && fade > 0.5 && !sheetOpen) ? "auto" : "none";
+    el.style.pointerEvents = (front && fade > 0.5 && !sheetOpen && activeSection === "discover") ? "auto" : "none";
     el.classList.toggle("near", p.z > 0.72);
   }
 }
@@ -1610,23 +2483,38 @@ const dateStripTrack  = document.getElementById("dateStripTrack");
 const dateStripPrev   = document.getElementById("dateStripPrev");
 const dateStripNext   = document.getElementById("dateStripNext");
 const dateStripCalBtn = document.getElementById("dateStripCalBtn");
+const dateStripMonthEl = document.getElementById("dateStripMonth");
 const DATE_STRIP_DAYS = 60;
 
 function renderDateStrip(){
   dateStripTrack.innerHTML = "";
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  let selectedEl = null;
 
-  for (let i = 0; i < DATE_STRIP_DAYS; i++){
+  // the strip normally spans today -> today+59, but a date picked from the
+  // calendar can fall outside that window (past or further future) — widen
+  // the range so the strip can still scroll to and highlight it
+  let startOffset = 0, dayCount = DATE_STRIP_DAYS;
+  if (selectedDate){
+    const sel = new Date(selectedDate.y, selectedDate.m, selectedDate.d);
+    sel.setHours(0, 0, 0, 0);
+    const diffDays = Math.round((sel - today) / 86400000);
+    if (diffDays < 0){ startOffset = diffDays; dayCount -= diffDays; }
+    else if (diffDays >= dayCount){ dayCount = diffDays + 1; }
+  }
+
+  let selectedEl = null;
+  for (let i = 0; i < dayCount; i++){
+    const dayOffset = startOffset + i;
     const d = new Date(today);
-    d.setDate(today.getDate() + i);
+    d.setDate(today.getDate() + dayOffset);
     const y = d.getFullYear(), m = d.getMonth(), day = d.getDate();
-    const isToday = i === 0;
+    const isToday = dayOffset === 0;
 
     const btn = document.createElement("button");
     btn.type = "button";
-    btn.className = "date-pill";
+    btn.className = "date-pill" + (isToday ? " is-today" : "");
+    btn.dataset.y = y; btn.dataset.m = m;
     btn.innerHTML =
       `<span class="dp-dow">${isToday ? "Today" : d.toLocaleDateString("en-US", { weekday:"short" })}</span>` +
       `<span class="dp-num">${day}</span>`;
@@ -1640,11 +2528,67 @@ function renderDateStrip(){
     dateStripTrack.appendChild(btn);
   }
   if (selectedEl) selectedEl.scrollIntoView({ inline:"center", block:"nearest" });
+  updateDateStripMonth();
 }
+
+// keeps the "SEPTEMBER 2026"-style label in sync with whichever date is
+// nearest the centre of the (horizontally scrollable) strip
+let dateStripMonthRaf = null;
+function updateDateStripMonth(){
+  const pills = dateStripTrack.querySelectorAll(".date-pill");
+  if (!pills.length) return;
+  const trackRect = dateStripTrack.getBoundingClientRect();
+  const centerX = trackRect.left + trackRect.width / 2;
+  let closestBtn = pills[0], closestDist = Infinity;
+  pills.forEach(btn => {
+    const r = btn.getBoundingClientRect();
+    const dist = Math.abs((r.left + r.width / 2) - centerX);
+    if (dist < closestDist){ closestDist = dist; closestBtn = btn; }
+  });
+  dateStripMonthEl.textContent = `${MONTH_NAMES[Number(closestBtn.dataset.m)].toUpperCase()} ${closestBtn.dataset.y}`;
+}
+dateStripTrack.addEventListener("scroll", () => {
+  if (dateStripMonthRaf) return;
+  dateStripMonthRaf = requestAnimationFrame(() => { updateDateStripMonth(); dateStripMonthRaf = null; });
+});
 
 dateStripPrev.addEventListener("click", () => dateStripTrack.scrollBy({ left:-160, behavior:"smooth" }));
 dateStripNext.addEventListener("click", () => dateStripTrack.scrollBy({ left:160, behavior:"smooth" }));
-dateStripCalBtn.addEventListener("click", () => dateMenuEntry.open());
+
+// the calendar button reuses the exact same #dateMenuList panel/logic as the
+// topbar's date filter (renderCalendar/selectDate/calView) — it's just
+// relocated into a fixed-position popover anchored under this button while
+// open, since #dateMenuList's normal home (inside .topbar) sits in a lower
+// stacking context than the sheet and would otherwise be invisible here
+let calPopoverActive = false;
+function openDateStripCalendar(){
+  dateMenuEntry.close();
+  document.body.appendChild(dateMenuList);
+  dateMenuList.classList.add("cal-popover");
+  const r = dateStripCalBtn.getBoundingClientRect();
+  const panelW = 290;
+  const left = Math.max(12, Math.min(r.right - panelW, window.innerWidth - panelW - 12));
+  dateMenuList.style.left = `${left}px`;
+  dateMenuList.style.top = `${r.bottom + 10}px`;
+  requestAnimationFrame(() => dateMenuList.classList.add("open"));
+  calPopoverActive = true;
+}
+function closeDateStripCalendar(){
+  if (!calPopoverActive) return;
+  dateMenuList.classList.remove("cal-popover", "open");
+  dateMenuList.style.left = "";
+  dateMenuList.style.top = "";
+  dateMenu.appendChild(dateMenuList);
+  calPopoverActive = false;
+}
+dateStripCalBtn.addEventListener("click", e => {
+  e.stopPropagation();
+  calPopoverActive ? closeDateStripCalendar() : openDateStripCalendar();
+});
+document.addEventListener("click", e => {
+  if (calPopoverActive && !dateMenuList.contains(e.target)) closeDateStripCalendar();
+});
+addEventListener("keydown", e => { if (e.key === "Escape") closeDateStripCalendar(); });
 
 let sheetOpen = false, activeCity = -1, filter = "All", lastFocus = null;
 
@@ -1751,18 +2695,44 @@ function renderEvents(){
            Get tickets
          </a>`
       : "";
+    const alreadySaved = isInItinerary(c.name, e);
+    const venueCity = [e.v, c.name].filter(Boolean).join(" · ");
     li.innerHTML =
       `<span class="ev-time">${e.dateLabel ? `<span class="ev-date">${escapeHtml(e.dateLabel)}</span>` : ""}<span class="ev-hm">${escapeHtml(e.t)}</span></span>` +
-      `<span><span class="ev-name">${escapeHtml(e.n)}</span>${e.b ? `<span class="ev-badge">${escapeHtml(e.b)}</span>` : ""}` +
-      `<span class="ev-venue">${escapeHtml(e.v)}</span></span>` +
-      `<span class="ev-actions"><span class="ev-cat">${escapeHtml(e.c)}</span>${ticketsHtml}</span>`;
+      // same info-block layout/classes as the Itinerary cards (category above
+      // name, pin-icon venue line below) so an event has one visual identity
+      // across both pages — see renderItinerary()'s row markup
+      `<span class="hw-itin-info">` +
+        `<span class="ev-cat">${escapeHtml(e.c)}</span>` +
+        `<span><span class="ev-name">${escapeHtml(e.n)}</span>${e.b ? `<span class="ev-badge">${escapeHtml(e.b)}</span>` : ""}</span>` +
+        `<span class="hw-itin-venue"><svg width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M6 11s4-3.6 4-6.7A4 4 0 1 0 2 4.3C2 7.4 6 11 6 11Z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/><circle cx="6" cy="4.3" r="1.3" stroke="currentColor" stroke-width="1.1"/></svg>${escapeHtml(venueCity)}</span>` +
+      `</span>` +
+      `<span class="ev-actions">${ticketsHtml}` +
+      `<button class="hw-itin-add${alreadySaved ? " is-added" : ""}" type="button"${alreadySaved ? " disabled" : ""}>${alreadySaved ? "✓ In itinerary" : "+ Add to itinerary"}</button>` +
+      `</span>`;
     eventsEl.appendChild(li);
+
+    if (!alreadySaved){
+      const addBtn = li.querySelector(".hw-itin-add");
+      addBtn.addEventListener("click", () => {
+        if (!addToItinerary(c, e)) return;
+        addBtn.disabled = true;
+        addBtn.textContent = "Added to your world.";
+        addBtn.classList.add("is-flashing");
+        setTimeout(() => {
+          addBtn.classList.remove("is-flashing");
+          addBtn.classList.add("is-added");
+          addBtn.textContent = "✓ In itinerary";
+        }, 1100);
+      });
+    }
   });
 }
 
 function closeSheet(){
   if (!sheetOpen) return;
   sheetOpen = false;
+  closeDateStripCalendar();
   document.body.classList.remove("sheet-open");
   CITIES.forEach(x => x.rail.classList.remove("is-active"));
   view.spinTarget = reduced ? 0 : 0.00022;
@@ -1812,6 +2782,1102 @@ function endDrag(e){
 canvas.addEventListener("pointerup", endDrag);
 canvas.addEventListener("pointercancel", endDrag);
 canvas.addEventListener("lostpointercapture", endDrag);
+
+/* ============================================================
+   GLOBAL NAVIGATION — Discover / Itinerary / My World
+   ------------------------------------------------------------
+   Three .hw-panel sections crossfade in place; the globe canvas
+   underneath never stops rendering, so switching sections feels
+   like moving through one continuous world rather than loading a
+   separate page. Itinerary and My World are UI-only in this pass —
+   no Excel import/export yet, just the shape of it.
+   ============================================================ */
+
+let activeSection = "discover";
+const SECTION_DIM = { discover: 1, itinerary: 0.32, myworld: 1 };
+const SECTION_SIZE = { discover: 1, itinerary: 1, myworld: 1.15 };
+const sectionPanels = [
+  document.getElementById("world"),
+  document.getElementById("itinerary"),
+  document.getElementById("myworld")
+];
+const navButtons = [...document.querySelectorAll(".hw-nav-item")];
+
+function showSection(name){
+  if (name === activeSection) return;
+  if (activeSection === "myworld" && mwReplay) stopMyWorldReplay();
+  myWorldSelectedCity = null; // fresh pill list next time My World opens
+  activeSection = name;
+  document.body.setAttribute("data-section", name);
+  sectionPanels.forEach(p => {
+    const isActive = p.dataset.section === name;
+    p.classList.toggle("active", isActive);
+    p.setAttribute("aria-hidden", String(!isActive));
+  });
+  navButtons.forEach(b => {
+    const isActive = b.dataset.section === name;
+    b.classList.toggle("is-active", isActive);
+    if (isActive) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
+  });
+  menus.forEach(m => m.close());
+  if (sheetOpen) closeSheet();
+  if (name === "myworld") renderMyWorld(); // recompute from attended events + re-trigger the fill-in animation
+}
+navButtons.forEach(b => b.addEventListener("click", () => showSection(b.dataset.section)));
+document.body.setAttribute("data-section", "discover");
+
+/* ---------------- Itinerary ---------------- */
+/* Hello World's itinerary is events the user has discovered and chosen to
+   save or attend — NOT a general travel planner (no flights/hotels/
+   destinations). ONE record shape is used everywhere: Discover's "+ Add
+   to itinerary" button, Excel import, Excel export, and My World's
+   analytics all read/write the exact same fields, so nothing needs a
+   separate incompatible shape:
+   { id, eventName, city, country, date:{y,m,d}|null, time, venue,
+     category, ticketUrl, status, addedAt }
+   status is one of "Interested" | "Going" | "Attended". */
+let itinerary = [];
+
+const MONTH_ABBR = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const COUNTRY_NAMES = { DE: "Germany", GB: "United Kingdom", JP: "Japan", AU: "Australia", US: "United States", ES: "Spain" };
+const STATUS_CYCLE = ["Interested", "Going", "Attended"];
+const STATUS_COLOR = { Interested: "var(--muted)", Going: "var(--muted)", Attended: "var(--muted)" };
+const STATUS_ICON = { Interested: "☆", Going: "✓", Attended: "★" };
+
+let toastTimer = null;
+function showToast(message){
+  const el = document.getElementById("hwToast");
+  el.textContent = message;
+  el.classList.add("is-visible");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove("is-visible"), 2200);
+}
+
+// stable identity for de-duplication, shared by Discover-added AND
+// Excel-imported events alike: prefer the (unique) ticket URL, else the
+// Event+City+Date+Venue composite the brief calls for
+function normKey(s){ return String(s || "").trim().toLowerCase(); }
+function dateKeyOf(date){ return date ? `${date.y}-${date.m}-${date.d}` : "tba"; }
+function itineraryId(record){
+  if (record.ticketUrl) return "url:" + normKey(record.ticketUrl);
+  return "ck:" + [normKey(record.eventName), normKey(record.city), dateKeyOf(record.date), normKey(record.venue)].join("|");
+}
+
+function itinSortValue(it){
+  return it.date ? new Date(it.date.y, it.date.m, it.date.d).getTime() : Infinity;
+}
+function afterItineraryChange(){
+  itinerary.sort((a, b) => itinSortValue(a) - itinSortValue(b) || (a.time || "").localeCompare(b.time || ""));
+  updateItineraryCityHighlights();
+  renderItinerary();
+  if (activeSection === "myworld") renderMyWorld();
+}
+// cities with at least one saved event (any status) get a globe ring —
+// ties Itinerary/My World visibly back to Discover; a city Hello World
+// doesn't recognise just has no marker to ring, nothing crashes or is lost
+function updateItineraryCityHighlights(){
+  const saved = new Set(itinerary.map(it => it.city));
+  CITIES.forEach(c => { if (c.el) c.el.classList.toggle("itinerary-match", saved.has(c.name)); });
+}
+
+/* ---- Discover -> Itinerary (existing behaviour, preserved) ---- */
+function discoverRecord(cityName, e){
+  return { eventName: e.n, city: cityName, date: e.date, venue: e.v, ticketUrl: e.url || null };
+}
+function isInItinerary(cityName, e){
+  return itinerary.some(it => it.id === itineraryId(discoverRecord(cityName, e)));
+}
+function addToItinerary(city, e){
+  const id = itineraryId(discoverRecord(city.name, e));
+  if (itinerary.some(it => it.id === id)) return false;
+  itinerary.push({
+    id,
+    eventName: e.n,
+    city: city.name,
+    country: COUNTRY_NAMES[city.apiCountry] || city.apiCountry || "",
+    date: e.date,
+    time: e.t,
+    venue: e.v,
+    category: e.c,
+    ticketUrl: e.url || null,
+    status: "Going",
+    notes: "",
+    addedAt: Date.now()
+  });
+  afterItineraryChange();
+  return true;
+}
+function removeFromItinerary(id){
+  itinerary = itinerary.filter(it => it.id !== id);
+  afterItineraryChange();
+}
+function setItineraryStatus(id, status){
+  const it = itinerary.find(x => x.id === id);
+  if (!it) return;
+  it.status = status;
+  afterItineraryChange();
+}
+
+function itinDateLabel(it){
+  if (!it.date) return "DATE TBA";
+  const d = new Date(it.date.y, it.date.m, it.date.d);
+  return `${d.toLocaleDateString("en-US", { weekday: "short" }).toUpperCase()} · ${d.getDate()} ${MONTH_ABBR[d.getMonth()].toUpperCase()}`;
+}
+
+function renderItinerary(){
+  const el = document.getElementById("itineraryList");
+  el.innerHTML = "";
+
+  // Attended events move to My World and drop out of the upcoming
+  // Itinerary view — they stay in the itinerary[] dataset itself (so
+  // Excel export still includes them), this is a display-only filter
+  const upcoming = itinerary.filter(it => it.status !== "Attended");
+
+  if (!upcoming.length){
+    el.innerHTML =
+      `<div class="hw-card hw-empty">
+         <div class="hw-empty-glyph">
+           <svg width="26" height="26" viewBox="0 0 26 26" fill="none" aria-hidden="true"><circle cx="13" cy="13" r="9.5" stroke="currentColor" stroke-width="1.3"/><path d="M3.5 13h19M13 3.5c2.6 2.6 4 6 4 9.5s-1.4 6.9-4 9.5c-2.6-2.6-4-6-4-9.5s1.4-6.9 4-9.5Z" stroke="currentColor" stroke-width="1.3"/></svg>
+         </div>
+         <p class="hw-empty-title">Your world is wide open.</p>
+         <p class="hw-empty-sub">Discover something happening around the world and add it to your itinerary.</p>
+         <button class="hw-btn-primary" id="exploreEventsBtn" type="button">Explore events</button>
+       </div>`;
+    document.getElementById("exploreEventsBtn").addEventListener("click", () => showSection("discover"));
+    return;
+  }
+
+  // itinerary[] is kept pre-sorted (see afterItineraryChange) — just group
+  // it by date, then by city, in that order
+  const dateGroups = [];
+  upcoming.forEach(it => {
+    const label = itinDateLabel(it);
+    let group = dateGroups.find(g => g.label === label);
+    if (!group){ group = { label, cities: [] }; dateGroups.push(group); }
+    let cityGroup = group.cities.find(cg => cg.city === it.city);
+    if (!cityGroup){ cityGroup = { city: it.city, events: [] }; group.cities.push(cityGroup); }
+    cityGroup.events.push(it);
+  });
+
+  dateGroups.forEach(group => {
+    const dateEl = document.createElement("div");
+    dateEl.className = "hw-itin-date-group";
+    dateEl.innerHTML = `<p class="hw-itin-date">${escapeHtml(group.label)}</p>`;
+    group.cities.forEach(cg => {
+      const cityEl = document.createElement("div");
+      cityEl.className = "hw-itin-city-group";
+      cityEl.innerHTML = `<p class="hw-itin-city">${escapeHtml(cg.city)}</p><ul class="events hw-itin-events"></ul>`;
+      const ul = cityEl.querySelector("ul");
+      cg.events.forEach(it => {
+        const safeUrl = it.ticketUrl && /^https:\/\//i.test(it.ticketUrl) ? it.ticketUrl : null;
+        const venueCity = [it.venue, cg.city].filter(Boolean).join(" · ");
+        const li = document.createElement("li");
+        li.className = "event";
+        li.style.setProperty("--cc", CAT[it.category] || "#8B6BFF");
+        li.innerHTML =
+          `<span class="ev-time"><span class="ev-hm">${escapeHtml(it.time || "TBA")}</span></span>` +
+          `<span class="hw-itin-info">` +
+            `<span class="ev-cat">${escapeHtml(it.category || "")}</span>` +
+            `<span class="ev-name">${escapeHtml(it.eventName)}</span>` +
+            `<span class="hw-itin-venue"><svg width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M6 11s4-3.6 4-6.7A4 4 0 1 0 2 4.3C2 7.4 6 11 6 11Z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/><circle cx="6" cy="4.3" r="1.3" stroke="currentColor" stroke-width="1.1"/></svg>${escapeHtml(venueCity)}</span>` +
+          `</span>` +
+          `<span class="hw-itin-meta">` +
+            `<select class="hw-itin-status-select" style="--c:${STATUS_COLOR[it.status] || "var(--cyan)"}" title="Change status">` +
+              STATUS_CYCLE.map(s => `<option value="${s}"${s === it.status ? " selected" : ""}>${STATUS_ICON[s]} ${s}</option>`).join("") +
+            `</select>` +
+            `<span class="hw-itin-btns">` +
+              (safeUrl ? `<a class="hw-itin-icon-btn" href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener noreferrer" aria-label="Open tickets" title="Open tickets"><svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M1.5 5.5v-2A1 1 0 0 1 2.5 2.5h9a1 1 0 0 1 1 1v2a1.4 1.4 0 0 0 0 2.8v2A1 1 0 0 1 11.5 11.5h-9a1 1 0 0 1-1-1v-2a1.4 1.4 0 0 0 0-2.8Z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg></a>` : "") +
+              `<button class="hw-itin-icon-btn hw-itin-remove" type="button" aria-label="Remove from itinerary" title="Remove"><svg width="12" height="12" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>` +
+            `</span>` +
+          `</span>`;
+        ul.appendChild(li);
+        li.querySelector(".hw-itin-remove").addEventListener("click", () => removeFromItinerary(it.id));
+        li.querySelector(".hw-itin-status-select").addEventListener("change", e => {
+          setItineraryStatus(it.id, e.target.value);
+        });
+      });
+      dateEl.appendChild(cityEl);
+    });
+    el.appendChild(dateEl);
+  });
+}
+renderItinerary();
+
+/* ---- Excel import/export (SheetJS) ---- */
+class ItineraryError extends Error {}
+
+// canonical field -> header spellings we'll accept, case/space-insensitive
+const COLUMN_ALIASES = {
+  eventName: ["event", "event name"],
+  city:      ["city"],
+  country:   ["country"],
+  date:      ["date"],
+  time:      ["time"],
+  venue:     ["venue"],
+  category:  ["category", "event type", "event type / category"],
+  status:    ["status"],
+  ticketUrl: ["ticket url", "ticketurl", "ticket link"],
+  notes:     ["notes", "action", "notes / action", "action / notes"]
+};
+const REQUIRED_FIELDS = ["eventName", "city", "date"];
+const FIELD_LABELS = { eventName: "Event", city: "City", date: "Date" };
+const normHeader = s => String(s || "").trim().toLowerCase().replace(/\s+/g, " ");
+
+function buildFieldMap(headerKeys){
+  const map = {};
+  headerKeys.forEach(key => {
+    const n = normHeader(key);
+    for (const field in COLUMN_ALIASES){
+      if (!(field in map) && COLUMN_ALIASES[field].includes(n)) map[field] = key;
+    }
+  });
+  return map;
+}
+function normalizeStatus(raw){
+  const n = String(raw || "").trim().toLowerCase();
+  if (n === "interested") return "Interested";
+  if (n === "attended") return "Attended";
+  return "Going"; // blank or unrecognised
+}
+
+// Excel dates arrive three ways: a real JS Date (cellDates:true caught a
+// proper date cell), a raw serial number, or plain text. This app's own
+// example format is day-first (03/10/2026 = 3 Oct), so slash/dash dates
+// are parsed as DD/MM/YYYY rather than JS's US-style MM/DD/YYYY guess —
+// critical, since misreading that would silently scramble every date.
+//
+// All three branches build dates at LOCAL midnight, on purpose: SheetJS's
+// own cellDates:true does the same for genuine date cells (verified by
+// direct testing — its Date objects read back the right day via
+// getDate()/getMonth() in any timezone, but are NOT midnight UTC). Using
+// Date.UTC() here instead would silently shift every date back a day for
+// anyone viewing the site west of UTC, since the rest of the app reads
+// dates with local getters.
+function parseExcelDate(value){
+  if (value instanceof Date) return isNaN(value) ? null : value;
+  if (typeof value === "number"){
+    if (window.XLSX && XLSX.SSF && XLSX.SSF.parse_date_code){
+      const p = XLSX.SSF.parse_date_code(value);
+      if (p) return new Date(p.y, p.m - 1, p.d, p.H || 0, p.M || 0, p.S || 0);
+    }
+    return null;
+  }
+  if (typeof value === "string"){
+    const s = value.trim();
+    let m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/);
+    if (m){
+      let [, d, mo, y] = m.map(Number);
+      if (y < 100) y += 2000;
+      if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+      const dt = new Date(y, mo - 1, d);
+      return isNaN(dt) ? null : dt;
+    }
+    m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m){
+      const dt = new Date(+m[1], +m[2] - 1, +m[3]);
+      return isNaN(dt) ? null : dt;
+    }
+    return null;
+  }
+  return null;
+}
+// {y, m(0-indexed), d} — the same plain shape Discover's own event.date uses
+function toDateParts(jsDate){
+  return jsDate ? { y: jsDate.getFullYear(), m: jsDate.getMonth(), d: jsDate.getDate() } : null;
+}
+function fmtDateForExcel(date){
+  if (!date) return "";
+  const pad = n => String(n).padStart(2, "0");
+  return `${pad(date.d)}/${pad(date.m + 1)}/${date.y}`;
+}
+
+async function readItineraryFile(file){
+  const ext = (file.name || "").split(".").pop().toLowerCase();
+  if (!["xlsx", "xls"].includes(ext)){
+    throw new ItineraryError(`"${file.name || "This file"}" isn't a supported format — upload an .xlsx or .xls file.`);
+  }
+  if (!window.XLSX) throw new ItineraryError("The spreadsheet reader hasn't finished loading yet — please try again in a moment.");
+
+  let workbook;
+  try {
+    const buf = await file.arrayBuffer();
+    workbook = XLSX.read(buf, { type: "array", cellDates: true });
+  } catch (err){
+    throw new ItineraryError("That file couldn't be read — it may be corrupted or not a real spreadsheet.");
+  }
+
+  // a Hello World export has three tabs (History/Upcoming/My Experiences
+  // Wrapped) — History is the master dataset, so it's read exclusively;
+  // Upcoming and Wrapped are derived reports of the SAME records and would
+  // just create duplicates (or, for Wrapped, aren't itinerary rows at all)
+  // if read too. Falls back to an "itinerary"-named sheet, then the first
+  // sheet, for backwards compatibility with the original single-sheet demo
+  // file and any other spreadsheet a user hands it.
+  const sheetName =
+    workbook.SheetNames.find(n => n.trim().toLowerCase() === "history") ||
+    workbook.SheetNames.find(n => n.toLowerCase().includes("itinerary")) ||
+    workbook.SheetNames[0];
+  if (!sheetName) throw new ItineraryError("This spreadsheet has no worksheets.");
+  const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: "" });
+  if (!rows.length) throw new ItineraryError("This spreadsheet is empty — add some rows and try again.");
+
+  const fieldMap = buildFieldMap(Object.keys(rows[0]));
+  const missing = REQUIRED_FIELDS.filter(f => !(f in fieldMap));
+  if (missing.length){
+    throw new ItineraryError(`Missing required column${missing.length > 1 ? "s" : ""}: ${missing.map(f => FIELD_LABELS[f]).join(", ")}.`);
+  }
+
+  const records = [];
+  const rowIssues = [];
+  rows.forEach((row, i) => {
+    const eventName = String(row[fieldMap.eventName] ?? "").trim();
+    const city = String(row[fieldMap.city] ?? "").trim();
+    if (!eventName && !city) return; // fully blank row — skip quietly
+
+    const date = toDateParts(parseExcelDate(row[fieldMap.date]));
+    if (!eventName || !city || !date){
+      rowIssues.push(`row ${i + 2}`);
+      return;
+    }
+    records.push({
+      eventName, city,
+      country: fieldMap.country ? String(row[fieldMap.country] ?? "").trim() : "",
+      date,
+      time: fieldMap.time ? (String(row[fieldMap.time] ?? "").trim() || "TBA") : "TBA",
+      venue: fieldMap.venue ? String(row[fieldMap.venue] ?? "").trim() : "",
+      category: fieldMap.category ? (String(row[fieldMap.category] ?? "").trim() || "Live Music") : "Live Music",
+      ticketUrl: fieldMap.ticketUrl ? (String(row[fieldMap.ticketUrl] ?? "").trim() || null) : null,
+      status: fieldMap.status ? normalizeStatus(row[fieldMap.status]) : "Going",
+      notes: fieldMap.notes ? String(row[fieldMap.notes] ?? "").trim() : ""
+    });
+  });
+
+  if (!records.length){
+    throw new ItineraryError(
+      rowIssues.length
+        ? `No valid rows found — check ${rowIssues.slice(0, 3).join(", ")}${rowIssues.length > 3 ? ", and others" : ""}.`
+        : "No usable events found in this spreadsheet."
+    );
+  }
+
+  return { fileName: file.name, records, skippedRows: rowIssues.length };
+}
+
+function mergeImportedRecords(records){
+  let added = 0, duplicates = 0;
+  records.forEach(r => {
+    const id = itineraryId(r);
+    if (itinerary.some(it => it.id === id)){ duplicates++; return; }
+    // tagged so "Remove file" can undo just this import, leaving anything
+    // added by hand (Discover's "+ Add to itinerary") untouched
+    itinerary.push({ ...r, id, addedAt: Date.now(), source: "import" });
+    added++;
+  });
+  afterItineraryChange();
+  return { added, duplicates };
+}
+
+function removeImportedItinerary(){
+  itinerary = itinerary.filter(it => it.source !== "import");
+  afterItineraryChange();
+  setDropzoneState("idle");
+  showToast("Imported events removed.");
+}
+
+/* ---- shared workbook-generation engine ----
+   One History/Upcoming builder used by BOTH exports, so "Export Itinerary"
+   and "Export My World" can never drift apart on the same underlying
+   itinerary[] data. Formatting is deliberately limited to what this
+   project's SheetJS build (CDN xlsx.full.min.js, community edition) can
+   actually write — verified directly: column widths, autofilter and
+   hyperlinks all round-trip correctly; cell styling (bold/fill colour)
+   and freeze panes are silently dropped by the writer regardless of what
+   is set on the cell/sheet, and there is no chart-writing API at all in
+   this build. Rather than ship formatting that quietly does nothing (or
+   add a whole second Excel library just for this), hierarchy on the
+   Wrapped sheet below is carried by cell merges (which DO write
+   correctly), spacing and plain text instead. */
+
+// a sensible default Action/Notes value from status + whether a ticket
+// link exists — never overwrites real notes the user already has
+function defaultAction(record){
+  if (record.notes && record.notes.trim()) return record.notes.trim();
+  const hasTicket = !!(record.ticketUrl && /^https:\/\//i.test(record.ticketUrl));
+  if (record.status === "Interested") return hasTicket ? "Decide & buy tickets" : "Decide if attending";
+  if (record.status === "Going") return hasTicket ? "Tickets / booking" : "Check booking details";
+  return ""; // Attended — nothing left to action
+}
+
+// attaches a real clickable Excel hyperlink to whichever column holds the
+// ticket URL for each data row (never invents one — skips rows with none)
+function addTicketHyperlinks(ws, rows, colKey, headers){
+  const col = headers.indexOf(colKey);
+  rows.forEach((row, i) => {
+    const url = row[colKey];
+    if (!url || !/^https:\/\//i.test(url)) return;
+    const addr = XLSX.utils.encode_cell({ r: i + 1, c: col }); // +1 for the header row
+    if (ws[addr]) ws[addr].l = { Target: url };
+  });
+}
+
+function buildHistorySheet(){
+  const headers = ["Event","Event Type","Venue","City","Country","Date","Time","Status","Ticket URL","Notes / Action"];
+  const sorted = [...itinerary].sort((a, b) => itinSortValue(a) - itinSortValue(b));
+  const rows = sorted.map(it => ({
+    "Event": it.eventName, "Event Type": it.category || "", "Venue": it.venue || "",
+    "City": it.city, "Country": it.country || "", "Date": fmtDateForExcel(it.date),
+    "Time": it.time || "", "Status": it.status, "Ticket URL": it.ticketUrl || "",
+    "Notes / Action": defaultAction(it)
+  }));
+  const ws = XLSX.utils.json_to_sheet(rows, { header: headers });
+  ws["!cols"] = [{wch:34},{wch:14},{wch:26},{wch:14},{wch:16},{wch:12},{wch:8},{wch:11},{wch:38},{wch:30}];
+  if (rows.length) ws["!autofilter"] = { ref: XLSX.utils.encode_range({ s:{r:0,c:0}, e:{r:rows.length,c:headers.length-1} }) };
+  addTicketHyperlinks(ws, rows, "Ticket URL", headers);
+  return ws;
+}
+
+function buildUpcomingSheet(){
+  const headers = ["Date","Time","Event","Event Type","Venue","City","Country","Status","Action / Notes","Ticket Link"];
+  // same "not Attended" definition the Itinerary page itself renders from
+  const upcoming = itinerary.filter(it => it.status !== "Attended")
+    .sort((a, b) => itinSortValue(a) - itinSortValue(b));
+  const rows = upcoming.map(it => ({
+    "Date": fmtDateForExcel(it.date), "Time": it.time || "", "Event": it.eventName,
+    "Event Type": it.category || "", "Venue": it.venue || "", "City": it.city,
+    "Country": it.country || "", "Status": it.status,
+    "Action / Notes": defaultAction(it), "Ticket Link": it.ticketUrl || ""
+  }));
+  const ws = XLSX.utils.json_to_sheet(rows, { header: headers });
+  ws["!cols"] = [{wch:12},{wch:8},{wch:34},{wch:14},{wch:26},{wch:14},{wch:16},{wch:11},{wch:30},{wch:38}];
+  if (rows.length) ws["!autofilter"] = { ref: XLSX.utils.encode_range({ s:{r:0,c:0}, e:{r:rows.length,c:headers.length-1} }) };
+  addTicketHyperlinks(ws, rows, "Ticket Link", headers);
+  return ws;
+}
+
+function buildWrappedSheet(){
+  const stats = computeMyWorldStats();
+  const total = stats.attended.length;
+  const merges = [];
+  const addTitle = (rows, text, span) => {
+    merges.push({ s: { r: rows.length, c: 0 }, e: { r: rows.length, c: span - 1 } });
+    rows.push([text]);
+  };
+
+  const rows = [];
+  addTitle(rows, "MY EXPERIENCES WRAPPED", 4);
+  addTitle(rows, "Your cultural world, in numbers.", 4);
+  rows.push([]);
+
+  addTitle(rows, "YOUR WORLD", 4);
+  rows.push(["Total experiences attended", total]);
+  rows.push(["Cities explored", stats.cityCount]);
+  rows.push(["Countries explored", stats.countryCount]);
+  rows.push(["Continents explored", stats.continentCount]);
+  rows.push([]);
+
+  addTitle(rows, "YOUR TOP PICKS", 4);
+  rows.push(["Most explored city", stats.mostExploredCity]);
+  rows.push(["Favourite event category", stats.favouriteCategory]);
+  rows.push([]);
+
+  if (total){
+    addTitle(rows, "CULTURAL FINGERPRINT", 4);
+    const canonical = ["Live Music", "Art & Culture", "DJ Sets", "Festivals", "Underground"];
+    const ordered = [
+      ...canonical.filter(c => stats.catCounts[c]),
+      ...Object.keys(stats.catCounts).filter(c => !canonical.includes(c)).sort((a, b) => stats.catCounts[b] - stats.catCounts[a])
+    ];
+    ordered.forEach(cat => rows.push([cat, stats.catCounts[cat], `${Math.round(stats.catCounts[cat] / total * 100)}%`]));
+    rows.push([]);
+
+    addTitle(rows, "YOUR CITIES", 4);
+    rows.push(["City", "Country", "Experiences", "% of total"]);
+    Object.keys(stats.cityCounts)
+      .sort((a, b) => stats.cityCounts[b] - stats.cityCounts[a])
+      .forEach(city => {
+        const country = stats.attended.find(e => e.city === city)?.country || "";
+        const count = stats.cityCounts[city];
+        rows.push([city, country, count, `${Math.round(count / total * 100)}%`]);
+      });
+    rows.push([]);
+
+    // data-driven highlights — each only appears when the underlying
+    // numbers actually support it, nothing here is a fixed template
+    const highlights = [];
+    if (stats.mostExploredCity !== "—"){
+      const n = stats.cityCounts[stats.mostExploredCity];
+      highlights.push(`${stats.mostExploredCity} was your most explored city — ${n} experience${n === 1 ? "" : "s"}`);
+    }
+    if (stats.favouriteCategory !== "—"){
+      const pct = Math.round(stats.catCounts[stats.favouriteCategory] / total * 100);
+      highlights.push(`${stats.favouriteCategory} defined your year — ${pct}% of your experiences`);
+    }
+    if (stats.continentCount) highlights.push(`You explored ${stats.continentCount} continent${stats.continentCount === 1 ? "" : "s"}`);
+
+    const monthCounts = {};
+    stats.attended.forEach(e => { if (e.date){ const k = `${MONTH_ABBR[e.date.m]} ${e.date.y}`; monthCounts[k] = (monthCounts[k] || 0) + 1; } });
+    const topMonth = Object.entries(monthCounts).sort((a, b) => b[1] - a[1])[0];
+    if (topMonth && topMonth[1] > 1) highlights.push(`Your busiest month was ${topMonth[0]} — ${topMonth[1]} experiences`);
+
+    const yearCounts = {};
+    stats.attended.forEach(e => { if (e.date) yearCounts[e.date.y] = (yearCounts[e.date.y] || 0) + 1; });
+    if (Object.keys(yearCounts).length > 1){
+      const topYear = Object.entries(yearCounts).sort((a, b) => b[1] - a[1])[0];
+      highlights.push(`${topYear[0]} was your most active year — ${topYear[1]} experiences`);
+    }
+
+    const categoryCount = Object.keys(stats.catCounts).length;
+    if (categoryCount > 1) highlights.push(`You explored ${categoryCount} different event categories`);
+
+    const countryCounts = {};
+    stats.attended.forEach(e => { if (e.country) countryCounts[e.country] = (countryCounts[e.country] || 0) + 1; });
+    const countryEntries = Object.entries(countryCounts).sort((a, b) => b[1] - a[1]);
+    if (countryEntries.length > 1){
+      const [homeCountry, homeCount] = countryEntries[0];
+      const intl = total - homeCount;
+      if (intl > 0) highlights.push(`${intl} of your ${total} experiences were international, outside ${homeCountry}`);
+    }
+
+    if (highlights.length){
+      addTitle(rows, "YOUR HIGHLIGHTS", 4);
+      highlights.forEach(h => rows.push([h]));
+    }
+  }
+
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws["!cols"] = [{ wch: 44 }, { wch: 16 }, { wch: 14 }, { wch: 12 }];
+  ws["!merges"] = merges;
+  return ws;
+}
+
+function exportItinerary(){
+  if (!window.XLSX) return;
+  if (!itinerary.length){ showToast("Nothing to export yet."); return; }
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, buildHistorySheet(), "History");
+  XLSX.utils.book_append_sheet(wb, buildUpcomingSheet(), "Upcoming");
+  XLSX.writeFile(wb, "hello-world-itinerary.xlsx");
+  showToast("Itinerary exported.");
+}
+
+const importBtn  = document.getElementById("importBtn");
+const exportBtn  = document.getElementById("exportBtn");
+const importFile = document.getElementById("importFile");
+const dropzone   = document.getElementById("dropzone");
+const dropzoneBody = document.getElementById("dropzoneBody");
+
+const DROPZONE_ICON_IDLE = `<svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M9 2v9M9 2 5 6M9 2l4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M2.5 12v2A1.5 1.5 0 0 0 4 15.5h10A1.5 1.5 0 0 0 15.5 14v-2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const DROPZONE_ICON_OK   = `<svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M4 9.5l3.2 3.2L14 5.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const DROPZONE_ICON_ERR  = `<svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true"><circle cx="9" cy="9" r="7.25" stroke="currentColor" stroke-width="1.4"/><path d="M9 5.5v4M9 12v.1" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`;
+
+function setDropzoneState(state, data = {}){
+  dropzone.dataset.state = state;
+  if (state === "success"){
+    const bits = [];
+    if (data.added != null) bits.push(`${data.added} event${data.added === 1 ? "" : "s"} added`);
+    if (data.duplicates) bits.push(`${data.duplicates} already saved`);
+    if (data.skipped) bits.push(`${data.skipped} row${data.skipped === 1 ? "" : "s"} skipped`);
+    dropzoneBody.innerHTML =
+      `<div class="hw-dropzone-icon">${DROPZONE_ICON_OK}</div>` +
+      `<div>
+         <p class="hw-dropzone-title">Your world is ready.</p>
+         <p class="hw-dropzone-file">Imported from <strong>${escapeHtml(data.fileName)}</strong>${bits.length ? " · " + escapeHtml(bits.join(" · ")) : ""}</p>
+       </div>` +
+      `<div class="hw-dropzone-actions">
+         <button class="hw-dropzone-replace" id="replaceFileBtn" type="button">Replace file</button>
+         <button class="hw-dropzone-remove" id="removeFileBtn" type="button">Remove file</button>
+       </div>`;
+    document.getElementById("replaceFileBtn").addEventListener("click", e => {
+      e.stopPropagation();
+      importFile.click();
+    });
+    document.getElementById("removeFileBtn").addEventListener("click", e => {
+      e.stopPropagation();
+      removeImportedItinerary();
+    });
+  } else if (state === "error"){
+    dropzoneBody.innerHTML =
+      `<div class="hw-dropzone-icon">${DROPZONE_ICON_ERR}</div>` +
+      `<p class="hw-dropzone-title is-error">Couldn't import that file</p>` +
+      `<p class="hw-dropzone-sub">${escapeHtml(data.message)}</p>`;
+  } else {
+    dropzoneBody.innerHTML =
+      `<div class="hw-dropzone-icon">${DROPZONE_ICON_IDLE}</div>` +
+      `<p class="hw-dropzone-title">Drag &amp; drop your itinerary</p>` +
+      `<p class="hw-dropzone-sub">Drop in an Excel file (.xlsx or .xls) and Hello World will populate your itinerary automatically.</p>`;
+  }
+}
+
+async function handleImportedFile(file){
+  try {
+    const { fileName, records, skippedRows } = await readItineraryFile(file);
+    const { added, duplicates } = mergeImportedRecords(records);
+    setDropzoneState("success", { fileName, added, duplicates, skipped: skippedRows });
+  } catch (err){
+    setDropzoneState("error", { message: err instanceof ItineraryError ? err.message : "Something went wrong reading that file. Please try again." });
+  }
+}
+
+setDropzoneState("idle");
+importBtn.addEventListener("click", () => importFile.click());
+dropzone.addEventListener("click", () => { if (dropzone.dataset.state !== "success") importFile.click(); });
+dropzone.addEventListener("keydown", e => {
+  if ((e.key === "Enter" || e.key === " ") && dropzone.dataset.state !== "success"){ e.preventDefault(); importFile.click(); }
+});
+importFile.addEventListener("change", () => {
+  const file = importFile.files[0];
+  importFile.value = "";
+  if (file) handleImportedFile(file);
+});
+["dragenter", "dragover"].forEach(evt => dropzone.addEventListener(evt, e => {
+  e.preventDefault();
+  dropzone.classList.add("is-dragover");
+}));
+["dragleave", "dragend"].forEach(evt => dropzone.addEventListener(evt, () => dropzone.classList.remove("is-dragover")));
+dropzone.addEventListener("drop", e => {
+  e.preventDefault();
+  dropzone.classList.remove("is-dragover");
+  const file = e.dataTransfer.files && e.dataTransfer.files[0];
+  if (file) handleImportedFile(file);
+});
+exportBtn.addEventListener("click", exportItinerary);
+
+/* ---------------- My World ---------------- */
+/* Driven entirely by itinerary[] entries whose status is "Attended" — no
+   hard-coded demo numbers. Empty until the user (or an imported Excel
+   file) actually marks something Attended. */
+function attendedEvents(){ return itinerary.filter(it => it.status === "Attended"); }
+
+// covers the countries the app's own supported cities sit in, plus a few
+// common extras — a country missing here just doesn't count toward the
+// continent stat rather than breaking anything
+const CONTINENT_BY_COUNTRY = {
+  "germany": "Europe", "united kingdom": "Europe", "spain": "Europe", "france": "Europe",
+  "italy": "Europe", "netherlands": "Europe", "portugal": "Europe", "ireland": "Europe",
+  "japan": "Asia", "singapore": "Asia", "united arab emirates": "Asia", "thailand": "Asia", "south korea": "Asia",
+  "australia": "Oceania", "new zealand": "Oceania",
+  "united states": "North America", "usa": "North America", "canada": "North America", "mexico": "North America",
+  "brazil": "South America", "argentina": "South America",
+  "south africa": "Africa"
+};
+
+// factored out of computeMyWorldStats so the Replay feature can compute the
+// exact same shape from a partial (progressively revealed) slice of events
+function statsFromEvents(attended){
+  const cityCounts = {}, catCounts = {}, countrySet = new Set(), continentSet = new Set();
+  attended.forEach(a => {
+    cityCounts[a.city] = (cityCounts[a.city] || 0) + 1;
+    catCounts[a.category || "Uncategorised"] = (catCounts[a.category || "Uncategorised"] || 0) + 1;
+    if (a.country){
+      countrySet.add(a.country);
+      const continent = CONTINENT_BY_COUNTRY[a.country.trim().toLowerCase()];
+      if (continent) continentSet.add(continent);
+    }
+  });
+  const topOf = counts => Object.keys(counts).sort((x, y) => counts[y] - counts[x])[0] || "—";
+  return {
+    attended,
+    cityCount: Object.keys(cityCounts).length,
+    countryCount: countrySet.size,
+    continentCount: continentSet.size,
+    mostExploredCity: topOf(cityCounts),
+    favouriteCategory: topOf(catCounts),
+    catCounts,
+    cityCounts
+  };
+}
+function computeMyWorldStats(){ return statsFromEvents(attendedEvents()); }
+
+/* ============================================================
+   MY WORLD — interactive globe layer
+   ------------------------------------------------------------
+   City nodes are DOM buttons (same .marker/.dot/.label pattern as
+   Discover's pins) positioned every frame via the same project()
+   function the canvas globe already uses, so they always align with it
+   regardless of rotation/zoom. Arcs + travelling particles are drawn on
+   the shared canvas itself (see drawMyWorldGlobeLayer(), called from
+   draw()). Everything here reads from myWorldGeo, which is rebuilt
+   from Attended events whenever renderMyWorld() runs (real data) or,
+   during Replay, from a progressively larger slice of the same events —
+   the rendering code itself never branches on "is this a replay?".
+   ============================================================ */
+
+// coordinates for cities outside the app's own CITIES array (which only
+// carries the 6 Discover cities) — lets an imported city like Seoul or
+// Paris still get a globe node. Anything not listed here simply has no
+// node (still counted in every analytic) rather than crashing.
+const EXTRA_CITY_COORDS = {
+  "seoul": { lat: 37.57, lon: 126.98, color: "#FF9F4A" },
+  "paris": { lat: 48.86, lon: 2.35, color: "#C792FF" },
+  "singapore": { lat: 1.35, lon: 103.82, color: "#4AD9C0" },
+  "hong kong": { lat: 22.32, lon: 114.17, color: "#FF6B9E" },
+  "los angeles": { lat: 34.05, lon: -118.24, color: "#FFD24A" },
+  "barcelona": { lat: 41.39, lon: 2.17, color: "#59C9FF" },
+  "amsterdam": { lat: 52.37, lon: 4.90, color: "#8B6BFF" }
+};
+function cityGlobeInfo(cityName){
+  const known = CITIES.find(c => c.name === cityName);
+  if (known) return { lat: known.lat, lon: known.lon, color: known.color };
+  const extra = EXTRA_CITY_COORDS[(cityName || "").trim().toLowerCase()];
+  return extra || null;
+}
+function mwDateLabel(date){
+  return date ? `${date.d} ${MONTH_ABBR[date.m]} ${date.y}` : "";
+}
+
+let myWorldGeo = { nodes: [], order: [], maxCount: 1, stats: null };
+const myWorldNodeEls = new Map();
+const myWorldNodesEl = document.getElementById("myWorldNodes");
+
+function buildMyWorldGeo(stats){
+  const chronological = [...stats.attended].sort((a, b) => itinSortValue(a) - itinSortValue(b));
+  const order = [];
+  chronological.forEach(e => { if (!order.includes(e.city)) order.push(e.city); });
+
+  const nodes = Object.keys(stats.cityCounts).map(city => ({
+    city,
+    count: stats.cityCounts[city],
+    events: chronological.filter(e => e.city === city),
+    geo: cityGlobeInfo(city)
+  }));
+  const maxCount = nodes.reduce((m, n) => Math.max(m, n.count), 1);
+  myWorldGeo = { nodes, order, maxCount, stats };
+  syncMyWorldNodeEls();
+}
+
+function syncMyWorldNodeEls(){
+  const keep = new Set();
+  myWorldGeo.nodes.forEach(n => {
+    if (!n.geo) return; // no known coordinates — stays in analytics, just no globe node
+    keep.add(n.city);
+    let el = myWorldNodeEls.get(n.city);
+    if (!el){
+      el = document.createElement("button");
+      el.type = "button";
+      el.className = "marker mw-node";
+      el.innerHTML = `<span class="hit"></span><span class="dot"></span><span class="label"></span>`;
+      el.addEventListener("click", () => selectMyWorldCity(n.city));
+      myWorldNodesEl.appendChild(el);
+      myWorldNodeEls.set(n.city, el);
+    }
+    el.style.setProperty("--c", n.geo.color);
+    // scaled relative to this user's own busiest city, so the node size
+    // is meaningful whether they have 3 attended events or 300
+    const scale = 1 + 1.1 * (n.count / myWorldGeo.maxCount);
+    el.style.setProperty("--dot-scale", scale.toFixed(2));
+    el.classList.toggle("pulse", n.count / myWorldGeo.maxCount >= 0.7);
+    el.querySelector(".label").textContent = `${n.city} · ${n.count}`;
+    el.setAttribute("aria-label", `${n.city} — ${n.count} experience${n.count === 1 ? "" : "s"}`);
+  });
+  // drop nodes for cities that are no longer attended (status reverted,
+  // event removed, import replaced/removed, etc.)
+  myWorldNodeEls.forEach((el, city) => {
+    if (!keep.has(city)){ el.remove(); myWorldNodeEls.delete(city); }
+  });
+}
+
+function placeMyWorldNodes(){
+  const active = activeSection === "myworld" && view.entered > 0.02;
+  myWorldNodeEls.forEach((el, city) => {
+    const node = active && myWorldGeo.nodes.find(n => n.city === city);
+    if (!node || !node.geo){ el.style.opacity = 0; el.style.pointerEvents = "none"; return; }
+    const p = project(node.geo.lat, node.geo.lon);
+    const front = p.z > 0;
+    const fade = Math.max(0, Math.min(1, (p.z - 0.02) / 0.28));
+    const s = 0.72 + 0.28 * Math.max(0, p.z);
+    el.style.transform = `translate3d(${p.x.toFixed(1)}px, ${p.y.toFixed(1)}px, 0) translate(-5.5px, -5.5px) scale(${s.toFixed(3)})`;
+    el.style.opacity = (fade * view.entered).toFixed(3);
+    el.style.pointerEvents = (front && fade > 0.4) ? "auto" : "none";
+    el.classList.toggle("near", p.z > 0.72);
+  });
+}
+
+/* same camera tween as flyTo(), parametrised by lat/lon directly instead
+   of a CITIES index — lets My World's nodes (which include cities outside
+   CITIES, like Seoul/Paris) reuse the exact same camera behaviour */
+function flyToCoords(lat, lon, done){
+  const target = -lon * RAD;
+  const twoPi = Math.PI * 2;
+  const delta = ((target - view.rot) % twoPi + twoPi * 1.5) % twoPi - Math.PI;
+  view.vRot = view.vTilt = 0;
+  view.tween = {
+    t: 0, dur: reduced ? 1 : 1150,
+    r0: view.rot, r1: view.rot + delta,
+    p0: view.tilt, p1: Math.max(-0.5, Math.min(0.5, lat * RAD * 0.55)),
+    done
+  };
+}
+
+// the ONE city-detail experience for My World — used by both a globe node
+// click and an "Events by city" pill click, so there is never a second,
+// different city view to keep in sync with this one
+function selectMyWorldCity(cityName){
+  const node = myWorldGeo.nodes.find(n => n.city === cityName);
+  if (!node) return;
+  myWorldSelectedCity = cityName;
+  view.spinTarget = 0;
+  if (node.geo) flyToCoords(node.geo.lat, node.geo.lon);
+  renderMyWorldCityCard();
+}
+
+/* ---- Replay My World ----
+   Re-plays Attended experiences chronologically over a fixed ~12s window
+   regardless of the real date range. It works by repeatedly calling the
+   exact same buildMyWorldGeo()/dashboard-render path with a progressively
+   larger slice of the real, sorted event list — so nodes, arcs and the
+   Cultural Fingerprint all update through the normal rendering code with
+   no special-cased "replay" logic of their own. */
+let mwReplay = null;
+const mwReplayBar   = document.getElementById("myWorldReplayBar");
+const mwReplayMonth = document.getElementById("myWorldReplayMonth");
+const mwReplayFill  = document.getElementById("myWorldReplayFill");
+
+function startMyWorldReplay(){
+  const stats = computeMyWorldStats();
+  if (!stats.attended.length) return;
+  myWorldSelectedCity = null;
+  const events = [...stats.attended].sort((a, b) => itinSortValue(a) - itinSortValue(b));
+  mwReplay = { events, idx: -1, paused: false, elapsed: 0, duration: 12000 };
+  mwReplayBar.classList.add("active");
+  document.getElementById("myWorldReplayPause").textContent = "Pause";
+  applyMyWorldReplayStep(0);
+}
+function pauseMyWorldReplay(){
+  if (!mwReplay) return;
+  mwReplay.paused = !mwReplay.paused;
+  document.getElementById("myWorldReplayPause").textContent = mwReplay.paused ? "Resume" : "Pause";
+}
+function stopMyWorldReplay(){
+  if (!mwReplay) return;
+  mwReplay = null;
+  mwReplayBar.classList.remove("active");
+  renderMyWorld(); // restore the real, full state
+}
+function applyMyWorldReplayStep(idx){
+  mwReplay.idx = idx;
+  const slice = mwReplay.events.slice(0, idx + 1);
+  const partialStats = statsFromEvents(slice);
+  buildMyWorldGeo(partialStats);
+  renderMyWorldDashboard(partialStats, { replayCount: slice.length });
+  const last = slice[slice.length - 1];
+  mwReplayMonth.textContent = last && last.date ? `${MONTH_ABBR[last.date.m].toUpperCase()} ${last.date.y}` : "—";
+}
+document.getElementById("myWorldReplayPause").addEventListener("click", pauseMyWorldReplay);
+document.getElementById("myWorldReplayStop").addEventListener("click", stopMyWorldReplay);
+
+// builds the left sidebar (one glass panel: summary + most-explored/
+// favourite + Replay + Cultural Fingerprint, then a secondary "events by
+// city" card) from a given stats object — shared by the real render and by
+// Replay's progressively-larger partial stats, so both stay pixel-identical
+function renderMyWorldDashboard(stats, opts = {}){
+  const el = document.getElementById("myWorldContent");
+  el.innerHTML = "";
+  const total = stats.attended.length;
+
+  const panel = document.createElement("div");
+  panel.className = "hw-card mw-panel-card";
+  panel.innerHTML =
+    `<p class="mw-panel-heading">My Experiences Wrapped</p>` +
+    `<div class="mw-hero-stat">` +
+      `<span class="mw-hero-num">${total}</span>` +
+      `<span class="mw-hero-label">Experience${total === 1 ? "" : "s"}</span>` +
+    `</div>` +
+    `<div class="mw-stat-row">` +
+      `<div class="mw-stat-item"><span class="mw-stat-num">${stats.cityCount}</span><span class="mw-stat-label">${stats.cityCount === 1 ? "City" : "Cities"}</span></div>` +
+      `<div class="mw-stat-item"><span class="mw-stat-num">${stats.countryCount}</span><span class="mw-stat-label">${stats.countryCount === 1 ? "Country" : "Countries"}</span></div>` +
+      `<div class="mw-stat-item"><span class="mw-stat-num">${stats.continentCount}</span><span class="mw-stat-label">${stats.continentCount === 1 ? "Continent" : "Continents"}</span></div>` +
+    `</div>` +
+    `<div class="mw-panel-pair">
+       <div><span class="mw-panel-tinylabel">Most explored</span><span class="mw-panel-tinyvalue">${escapeHtml(stats.mostExploredCity)}</span></div>
+       <div><span class="mw-panel-tinylabel">Favourite</span><span class="mw-panel-tinyvalue">${escapeHtml(stats.favouriteCategory)}</span></div>
+     </div>` +
+    (opts.replayCount ? "" :
+      `<button class="mw-replay-btn" type="button" id="myWorldReplayBtn">▶ Replay My World</button>` +
+      `<button class="mw-replay-btn" type="button" id="myWorldExportBtn">Export My World <svg width="12" height="12" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M7 8.5v-7M7 1.5 4 4.5M7 1.5l3 3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 10v1.5A1.5 1.5 0 0 0 3.5 13h7A1.5 1.5 0 0 0 12 11.5V10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>`
+    ) +
+    `<hr class="mw-panel-divider" />` +
+    `<p class="mw-panel-heading">Cultural Fingerprint</p>` +
+    `<div class="hw-fp-bars"></div>`;
+  el.appendChild(panel);
+  if (!opts.replayCount){
+    document.getElementById("myWorldReplayBtn").addEventListener("click", startMyWorldReplay);
+    document.getElementById("myWorldExportBtn").addEventListener("click", exportMyWorld);
+  }
+
+  // reuses the app's real category colour map (CAT) so this stays visually
+  // consistent with every chip/tag already used on Discover/Itinerary
+  const fpBars = panel.querySelector(".hw-fp-bars");
+  // sorts by count so the fingerprint is always dynamic; in normal use
+  // categories are always one of the app's 5 (Live Music, DJ Sets, Art &
+  // Culture, Festivals, Underground) since that's all Discover/import ever
+  // assign, but any other value a user's own spreadsheet contains still
+  // shows here rather than being silently dropped
+  Object.keys(stats.catCounts)
+    .sort((a, b) => stats.catCounts[b] - stats.catCounts[a])
+    .forEach(cat => {
+      const pct = Math.round((stats.catCounts[cat] / total) * 100);
+      const row = document.createElement("div");
+      row.className = "hw-fp-row";
+      // width + colour are baked straight into the initial markup (rather
+      // than set a frame later via a deferred rAF-driven transition) so the
+      // coloured fill is guaranteed to be visible on first paint
+      row.innerHTML =
+        `<span class="hw-fp-label">${escapeHtml(cat)}</span>` +
+        `<span class="hw-fp-track"><span class="hw-fp-fill" style="--c:${CAT[cat] || "#8B6BFF"};width:${pct}%"></span></span>` +
+        `<span class="hw-fp-pct">${pct}%</span>`;
+      fpBars.appendChild(row);
+    });
+
+  renderMyWorldCityCard();
+}
+
+// right column: "Events by city" — either the clickable pill list, or (once
+// a pill's been clicked, from either the pill itself OR a globe node —
+// see selectMyWorldCity()) that ONE city detail view: category breakdown
+// then the full chronological event history. Always reads myWorldGeo.stats
+// (built from the central Attended dataset) rather than taking its own
+// copy, so there is exactly one source of truth and one place this can
+// ever be shown.
+let myWorldSelectedCity = null;
+function renderMyWorldCityCard(){
+  const stats = myWorldGeo.stats;
+  const cityCardEl = document.getElementById("myWorldCityCard");
+  cityCardEl.innerHTML = "";
+  if (!stats) return;
+  const node = myWorldSelectedCity ? myWorldGeo.nodes.find(n => n.city === myWorldSelectedCity) : null;
+
+  if (node){
+    const catCounts = {};
+    node.events.forEach(e => { catCounts[e.category || "Uncategorised"] = (catCounts[e.category || "Uncategorised"] || 0) + 1; });
+    const catTotal = node.events.length;
+    const breakdownHtml = Object.keys(catCounts)
+      .sort((a, b) => catCounts[b] - catCounts[a])
+      .map(cat => {
+        const pct = Math.round((catCounts[cat] / catTotal) * 100);
+        return `<div class="mw-city-cat-row">` +
+          `<span class="mw-city-cat-dot" style="--c:${CAT[cat] || "#8B6BFF"}"></span>` +
+          `<span class="mw-city-cat-label">${escapeHtml(cat)}</span>` +
+          `<span class="mw-city-cat-pct">${pct}%</span>` +
+        `</div>`;
+      }).join("");
+
+    const card = document.createElement("div");
+    card.className = "hw-card hw-visited mw-city-detail";
+    card.innerHTML =
+      `<button class="mw-city-back" type="button">‹ Events by city</button>` +
+      `<p class="hw-section-label">${escapeHtml(node.city.toUpperCase())}</p>` +
+      `<p class="mw-panel-big mw-city-count">${node.count} experience${node.count === 1 ? "" : "s"}</p>` +
+      `<p class="mw-panel-heading">Category breakdown</p>` +
+      `<div class="mw-city-cat-list">${breakdownHtml}</div>` +
+      `<ul class="mw-city-events"></ul>`;
+    cityCardEl.appendChild(card);
+    card.querySelector(".mw-city-back").addEventListener("click", () => {
+      myWorldSelectedCity = null;
+      renderMyWorldCityCard();
+    });
+    const eventsList = card.querySelector(".mw-city-events");
+    node.events.forEach(e => {
+      const li = document.createElement("li");
+      li.className = "mw-city-event";
+      li.innerHTML =
+        `<span class="mw-city-event-date">${escapeHtml(mwDateLabel(e.date)).toUpperCase()}</span>` +
+        `<span class="mw-city-event-cat" style="--c:${CAT[e.category] || "#8B6BFF"}">${escapeHtml(e.category || "")}</span>` +
+        `<span class="mw-city-event-name">${escapeHtml(e.eventName)}</span>` +
+        `<span class="mw-city-event-venue">📍 ${escapeHtml(e.venue || "")}</span>`;
+      eventsList.appendChild(li);
+    });
+    return;
+  }
+
+  // reuses the real CITIES array/colours where a city is recognised;
+  // unrecognised cities (can't be placed on the globe) still count here
+  const visitedCard = document.createElement("div");
+  visitedCard.className = "hw-card hw-visited";
+  visitedCard.innerHTML = `<p class="hw-section-label">Events by city</p><div class="hw-visited-list"></div>`;
+  const list = visitedCard.querySelector(".hw-visited-list");
+  Object.keys(stats.cityCounts)
+    .sort((a, b) => stats.cityCounts[b] - stats.cityCounts[a])
+    .forEach(city => {
+      const geo = cityGlobeInfo(city);
+      const chip = document.createElement("span");
+      chip.className = "hw-visited-chip";
+      chip.style.cursor = "pointer";
+      chip.innerHTML = `<i style="--c:${geo ? geo.color : "#8B6BFF"}"></i>${escapeHtml(city)} · ${stats.cityCounts[city]}`;
+      chip.addEventListener("click", () => selectMyWorldCity(city)); // same path a globe node click uses
+      list.appendChild(chip);
+    });
+
+  // Recently Attended — the 3 most recent Attended events across every
+  // city, newest first by actual event date (not array/import order).
+  // Reads straight off the same central stats.attended used everywhere
+  // else in My World, so a Going/Interested -> Attended change (or any
+  // other data change) is reflected the next time this card renders.
+  const recent = [...stats.attended]
+    .sort((a, b) => itinSortValue(b) - itinSortValue(a))
+    .slice(0, 3);
+  if (recent.length){
+    visitedCard.insertAdjacentHTML("beforeend",
+      `<hr class="mw-panel-divider mw-recent-divider" />` +
+      `<p class="mw-panel-heading">Recently Attended</p>` +
+      `<ul class="mw-recent-list"></ul>`
+    );
+    const recentList = visitedCard.querySelector(".mw-recent-list");
+    recent.forEach(e => {
+      const li = document.createElement("li");
+      li.className = "mw-recent-event";
+      li.innerHTML =
+        `<span class="mw-recent-meta">` +
+          `<span class="mw-recent-cat" style="--c:${CAT[e.category] || "#8B6BFF"}">${escapeHtml(e.category || "")}</span>` +
+          `<span class="mw-recent-date">${escapeHtml(mwDateLabel(e.date)).toUpperCase()}</span>` +
+        `</span>` +
+        `<span class="mw-recent-name">${escapeHtml(e.eventName)}</span>` +
+        `<span class="mw-recent-venue">📍 ${[escapeHtml(e.venue || ""), escapeHtml(e.city || "")].filter(Boolean).join(" · ")}</span>`;
+      li.addEventListener("click", () => selectMyWorldCity(e.city)); // same unified city/event detail view
+      recentList.appendChild(li);
+    });
+  }
+
+  cityCardEl.appendChild(visitedCard);
+}
+
+function renderMyWorld(){
+  const el = document.getElementById("myWorldContent");
+  const stats = computeMyWorldStats();
+  buildMyWorldGeo(stats); // keeps globe nodes (including "none" when empty) in sync
+
+  if (!stats.attended.length){
+    el.innerHTML =
+      `<div class="hw-card hw-empty">
+         <div class="hw-empty-glyph">
+           <svg width="26" height="26" viewBox="0 0 26 26" fill="none" aria-hidden="true"><circle cx="13" cy="13" r="9.5" stroke="currentColor" stroke-width="1.3"/><path d="M13 7.5v6l4 2.2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+         </div>
+         <p class="hw-empty-title">My World grows as you go.</p>
+         <p class="hw-empty-sub">Mark events as Attended in your Itinerary, and your cultural fingerprint will start to take shape here.</p>
+       </div>`;
+    document.getElementById("myWorldCityCard").innerHTML = ""; // nothing to show yet on the right side either
+    return;
+  }
+  renderMyWorldDashboard(stats);
+}
+renderMyWorld();
+
+function exportMyWorld(){
+  if (!window.XLSX) return;
+  if (!attendedEvents().length){ showToast("Mark some events as Attended first."); return; }
+  const wb = XLSX.utils.book_new();
+  // same History/Upcoming builders Export Itinerary uses — the two exports
+  // can never show different data for the same underlying itinerary[]
+  XLSX.utils.book_append_sheet(wb, buildHistorySheet(), "History");
+  XLSX.utils.book_append_sheet(wb, buildUpcomingSheet(), "Upcoming");
+  XLSX.utils.book_append_sheet(wb, buildWrappedSheet(), "My Experiences Wrapped");
+  XLSX.writeFile(wb, "hello-world-my-world.xlsx");
+  showToast("My World exported.");
+}
+// the button itself lives inside the My World Summary panel template (see
+// renderMyWorldDashboard()), which is rebuilt on every render/Replay step —
+// its click listener is (re)bound there rather than once here, since a
+// static getElementById binding would go stale the first time the panel
+// re-renders and replaces the button element
 
 /* ============================================================
    ENTER + LIFECYCLE
